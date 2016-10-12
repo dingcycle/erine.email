@@ -1,3 +1,4 @@
+# Install basic administration tools
 class base
 {
   notify { 'Processing base module':
