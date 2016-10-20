@@ -55,6 +55,17 @@ class postfix
     refreshonly => true,
   }
 
+  file { '/etc/postfix/main.cf':
+    ensure  => file,
+    mode    => '0644',
+    owner   => 'root',
+    group   => 'root',
+    content => template('postfix/main.cf.erb'),
+    notify  => Exec['reloadPostfix'],
+    # We need the /etc/postfix/ directory and not erasing our main.cf with the postfix package one
+    require => Package['postfix'],
+  }
+
   file { '/etc/postfix/master.cf':
     ensure  => present,
     mode    => '0644',
