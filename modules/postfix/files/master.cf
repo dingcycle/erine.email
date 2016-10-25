@@ -11,7 +11,7 @@
 # ==========================================================================
 filter    unix  -       n       n       -       10      pipe
     flags=Rq user=spameater null_sender=
-    argv=/usr/lib/postfix/spameater -f ${sender} -- ${recipient}
+    argv=/usr/lib/postfix/spameater ${sender} ${recipient}
 smtp      inet  n       -       -       -       -       smtpd
     -o content_filter=filter:dummy
 #smtp      inet  n       -       -       -       1       postscreen
