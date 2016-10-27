@@ -46,6 +46,23 @@ except Exception as e:
   logging.critical(str(e))
   sys.exit(1)
 
+# Forge finalRecipient or exit if incorrect
+# name column has a UNIQUE constraint. So using fetchone() is enough.
+# TODO - Hard-coding the domain name is for proof of concept only. It will be removed later.
+r = re.match("([^@]+)\.([^@\.]+)@([^@]+)$", recipient)
+if not r:
+  logging.critical("Incorrect recipient: " + recipient)
+  sys.exit(0)
+if r.group(3) != "erine.email":
+  logging.critical("Incorrect domain name: " + r.group(3))
+  sys.exit(0)
+dbCursor.execute("SELECT Email FROM Users WHERE Username = '" + r.group(2) + "';")
+finalRecipient = dbCursor.fetchone()
+if not finalRecipient:
+  logging.critical("Incorrect user name: " + r.group(2))
+  sys.exit(0)
+finalRecipient = finalRecipient[0]
+
 # Forge finalMail, messageId and subject
 try:
   finalMail = ""
@@ -66,13 +83,11 @@ try:
       # TODO - Hard-coding the "Return-Path" field is for proof of concept only. It will be removed later.
       finalMail += "Return-Path: <dpw2vtlkwq@erine.email>\n"
       continue
-    # TODO - Hard-coding the source "for" field is for proof of concept only. It will be removed later.
     r = re.match("(\s+for\s+)(.+);(.+)$", line, re.IGNORECASE)
     if r:
       if r.group(2) != "<" + recipient + ">":
         logging.warning("for (" + r.group(2) + ") is different than recipient (" + recipient + ")")
-      # TODO - Hard-coding the destination "for" field is for proof of concept only. It will be removed later.
-      finalMail += r.group(1) + "<test@example.com>" + r.group(3) + "\n"
+      finalMail += r.group(1) + "<" + finalRecipient + ">" + r.group(3) + "\n"
       continue
     r = re.match("Message-ID:\s(.+)$", line, re.IGNORECASE)
     if r:
@@ -94,10 +109,10 @@ except Exception as e:
 dbCursor.execute("SELECT id FROM message WHERE messageId = '" + messageId + "';")
 if not dbCursor.fetchone():
   logging.info("Processing Message-ID " + messageId)
-  dbCursor.execute("INSERT INTO message (messageId, subject, rcptTo) values ('" + messageId + "', '" + subject + "', '" + recipient + "'); COMMIT;")
+  dbCursor.execute("INSERT INTO message (messageId, subject, rcptTo) values ('" + messageId + "', '" + subject + "', '" + finalRecipient + "'); COMMIT;")
   dbCursor.close()
-  # TODO - Hard-coding the sender and recipient is for proof of concept only. It will be removed later.
-  p = subprocess.Popen(['/usr/sbin/sendmail', '-G', '-i', '-f', '<dpw2vtlkwq@erine.email>', '--', '<test@example.com>'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+  # TODO - Hard-coding the sender is for proof of concept only. It will be removed later.
+  p = subprocess.Popen(['/usr/sbin/sendmail', '-G', '-i', '-f', '<dpw2vtlkwq@erine.email>', '--', '<' + finalRecipient + '>'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
   l = p.communicate(input=finalMail)
 else:
   logging.info("Message-ID " + messageId + " already processed")
