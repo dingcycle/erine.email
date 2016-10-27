@@ -47,7 +47,15 @@ qmgr      unix  n       -       n       300     1       qmgr
 #qmgr     unix  n       -       n       300     1       oqmgr
 tlsmgr    unix  -       -       -       1000?   1       tlsmgr
 rewrite   unix  -       -       -       -       -       trivial-rewrite
-bounce    unix  -       -       -       -       0       bounce
+
+# In most cases, it is strongly suggested that you do not disable NDR responses.
+# As we have a very specific configuration, and as we won't tell the spamers
+# about our Machiavellian plan to destroy them, we will disable them anyway.
+# Expect to have logs like this:
+# warning: unexpected attribute nrequest from bounce socket (expecting: flags)
+# warning: deliver_request_get: error receiving common attributes
+bounce    unix  -       -       -       -       0       discard
+
 defer     unix  -       -       -       -       0       bounce
 trace     unix  -       -       -       -       0       bounce
 verify    unix  -       -       -       -       1       verify
