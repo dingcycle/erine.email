@@ -1,0 +1,7 @@
+/var/log/spameater/spameater.log {
+  rotate 10
+  maxsize 50M
+  compress
+  delaycompress
+  create 0600 spameater spameater
+}

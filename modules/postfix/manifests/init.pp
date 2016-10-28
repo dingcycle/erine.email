@@ -53,6 +53,16 @@ class postfix
     ],
   }
 
+  file { '/etc/logrotate.d/spameater':
+    ensure  => present,
+    mode    => '0644',
+    owner   => 'root',
+    group   => 'root',
+    source  => 'puppet:///modules/postfix/spameater.logrotate',
+    # We need the /etc/logrotate.d/ directory
+    require => Package['logrotate'],
+  }
+
   exec { 'reloadPostfix':
     command     => '/usr/sbin/postfix reload',
     refreshonly => true,
