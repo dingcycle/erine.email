@@ -1,8 +1,7 @@
 # Install basic administration tools
 class base
 {
-  notify { 'Processing base module':
-  }
+
   package { [
     'dnsutils',
     'lsof',
@@ -13,4 +12,5 @@ class base
   ]:
     ensure => present,
   }
+
 }

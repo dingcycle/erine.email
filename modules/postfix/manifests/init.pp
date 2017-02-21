@@ -1,8 +1,6 @@
 # Install Postfix, and our specific spameater filter
 class postfix
 {
-  notify { 'Processing postfix module':
-  }
 
   package { 'postfix':
     ensure => present,
