@@ -39,8 +39,10 @@ recipient = sys.argv[2]
 
 # Connect to spameater database
 try:
-  # TODO - Hard-coding the database credentials is for proof of concept only. It will be removed later.
-  connector = MySQLdb.connect(host = "127.0.0.1", connect_timeout = 2, user = "spameater", passwd="6nuRr2yvdIUVbiNgNoACqN13AWd16R27", db="spameater")
+  f = open('/home/spameater/.mariadb.pwd', 'r')
+  password = f.readline().strip()
+  f.close()
+  connector = MySQLdb.connect(host = "127.0.0.1", connect_timeout = 2, user = "spameater", passwd=password, db="spameater")
   dbCursor = connector.cursor()
 except Exception as e:
   logging.critical(str(e))
