@@ -57,6 +57,25 @@ class database
       Package['mariadb-server'],
       Package['mariadb-client'],
     ],
+    notify      => Exec['mkDb'],
+  }
+
+  exec { 'mkDb':
+    command     => '/usr/bin/mysql -p`/bin/cat /root/.mariadb.pwd` < /root/dump.sql',
+    refreshonly => true,
+    require     => [
+      File['/root/dump.sql'],
+      Package['mariadb-server'],
+      Package['mariadb-client'],
+    ],
+  }
+
+  file { '/root/dump.sql':
+    ensure => present,
+    mode   => '0640',
+    owner  => 'root',
+    group  => 'root',
+    source => 'puppet:///modules/database/dump.sql',
   }
 
 }
