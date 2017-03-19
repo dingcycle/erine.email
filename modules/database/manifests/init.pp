@@ -43,39 +43,36 @@ class database
     ensure => present,
   }
 
-  exec { 'mkSpameaterPwdFile':
-    command => '/bin/mktemp -u XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX > /home/spameater/.mariadb.pwd',
-    creates => '/home/spameater/.mariadb.pwd',
-    require => User['spameater'],
-    notify  => Exec['mkSpameaterDb'],
+  file { '/root/mkdb.sh':
+    ensure => present,
+    mode   => '0740',
+    owner  => 'root',
+    group  => 'root',
+    source => 'puppet:///modules/database/mkdb.sh',
   }
 
-  exec { 'mkSpameaterDb':
-    command     => '/usr/bin/mysql -p`/bin/cat /root/.mariadb.pwd` -e "CREATE USER spameater IDENTIFIED BY \"`/bin/cat /home/spameater/.mariadb.pwd`\";"',
-    refreshonly => true,
-    require     => [
-      Package['mariadb-server'],
-      Package['mariadb-client'],
-    ],
-    notify      => Exec['mkDb'],
-  }
-
-  exec { 'mkDb':
-    command     => '/usr/bin/mysql -p`/bin/cat /root/.mariadb.pwd` < /root/dump.sql',
-    refreshonly => true,
-    require     => [
-      File['/root/dump.sql'],
-      Package['mariadb-server'],
-      Package['mariadb-client'],
-    ],
-  }
-
-  file { '/root/dump.sql':
+  file { '/root/mkdb.sql':
     ensure => present,
     mode   => '0640',
     owner  => 'root',
     group  => 'root',
-    source => 'puppet:///modules/database/dump.sql',
+    source => 'puppet:///modules/database/mkdb.sql',
+  }
+
+  exec { 'mkDb':
+    command => '/root/mkdb.sh',
+    creates => [
+      '/home/spameater/.mariadb.pwd',
+      '/home/www-data/.mariadb.pwd',
+    ],
+    require => [
+      User['spameater'],
+      User['www-data'],
+      File['/root/mkdb.sh'],
+      File['/root/mkdb.sql'],
+      Package['mariadb-server'],
+      Package['mariadb-client'],
+    ]
   }
 
 }

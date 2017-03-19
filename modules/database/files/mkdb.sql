@@ -63,3 +63,9 @@ CREATE TABLE `message` (
 GRANT SELECT ON `spameater`.`Users` TO 'spameater'@'%';
 GRANT SELECT, UPDATE, INSERT ON `spameater`.`disposableMailAddress` TO 'spameater'@'%';
 GRANT SELECT, INSERT ON `spameater`.`message` TO 'spameater'@'%';
+
+--
+-- Grants for user `www`
+--
+
+GRANT SELECT, UPDATE, INSERT ON `spameater`.`Users` TO 'www'@'%';

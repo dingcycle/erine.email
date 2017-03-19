@@ -4,4 +4,5 @@ node default
   include database
   include logrotate
   include postfix
+  include wwwdata
 }
