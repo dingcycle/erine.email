@@ -9,6 +9,21 @@ import re
 import subprocess
 import sys
 
+def loopmsg(messageId, subject, finalRecipient):
+  logging.info("Message-ID " + messageId + " already processed")
+  dbCursor.execute("INSERT INTO `message` (messageId, subject, rcptTo, status) VALUES ('" + messageId + "', '" + subject + "', '" + finalRecipient + "', 'looped'); COMMIT;")
+
+def sendmsg(messageId, subject, finalRecipient, finalMail):
+  logging.info("Sending Message-ID " + messageId)
+  dbCursor.execute("INSERT INTO `message` (messageId, subject, rcptTo, status) VALUES ('" + messageId + "', '" + subject + "', '" + finalRecipient + "', 'sent'); COMMIT;")
+  # TODO - Hard-coding the sender is for proof of concept only. It will be removed later.
+  p = subprocess.Popen(['/usr/sbin/sendmail', '-G', '-i', '-f', '<dpw2vtlkwq@erine.email>', '--', '<' + finalRecipient + '>'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+  l = p.communicate(input=finalMail)
+
+def dropmsg(messageId, subject, finalRecipient):
+  logging.info("Dropping Message-ID " + messageId)
+  dbCursor.execute("INSERT INTO `message` (messageId, subject, rcptTo, status) VALUES ('" + messageId + "', '" + subject + "', '" + finalRecipient + "', 'dropped'); COMMIT;")
+
 # Be sure /var/log/spameater/spameater.log exists and is accessible to spameater user
 # On exception raising, do not use logging to display the error as something's wrong with it
 try:
@@ -49,7 +64,7 @@ except Exception as e:
   sys.exit(1)
 
 # Forge finalRecipient or exit if incorrect
-# name column has a UNIQUE constraint. So using fetchone() is enough.
+# Username column has a UNIQUE constraint. So using fetchone() is enough.
 # TODO - Hard-coding the domain name is for proof of concept only. It will be removed later.
 r = re.match("([^@]+)\.([^@\.]+)@([^@]+)$", recipient)
 if not r:
@@ -98,7 +113,6 @@ try:
     if r:
       subject = r.group(1)
     finalMail += line
-  logging.info(finalMail)
   if not messageId:
     logging.critical("Message-ID not found")
     sys.exit(1)
@@ -108,15 +122,34 @@ except Exception as e:
   logging.critical(str(e))
   sys.exit(1)
 
-dbCursor.execute("SELECT id FROM message WHERE messageId = '" + messageId + "';")
-if not dbCursor.fetchone():
-  logging.info("Processing Message-ID " + messageId)
-  dbCursor.execute("INSERT INTO message (messageId, subject, rcptTo) values ('" + messageId + "', '" + subject + "', '" + finalRecipient + "'); COMMIT;")
-  dbCursor.close()
-  # TODO - Hard-coding the sender is for proof of concept only. It will be removed later.
-  p = subprocess.Popen(['/usr/sbin/sendmail', '-G', '-i', '-f', '<dpw2vtlkwq@erine.email>', '--', '<' + finalRecipient + '>'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-  l = p.communicate(input=finalMail)
-else:
-  logging.info("Message-ID " + messageId + " already processed")
+# Exit if message already processed
+dbCursor.execute("SELECT `id` FROM `message` WHERE `messageId` = '" + messageId + "';")
+if dbCursor.fetchone():
+  loopmsg(messageId, subject, finalRecipient)
   dbCursor.close()
   sys.exit(0)
+
+# Create or update disposable mail address in DB. Call sendmsg() or dropmsg().
+# mailAddress column has a UNIQUE constraint. So using fetchone() is enough.
+dbCursor.execute("SELECT `enabled` FROM disposableMailAddress WHERE mailAddress = '" + recipient + "';")
+enabled = dbCursor.fetchone()
+if not enabled:
+
+  # The disposable mail address is used for the first time
+  dbCursor.execute("INSERT INTO `disposableMailAddress` (mailAddress, forwarded) VALUES ('" + recipient + "', 1);")
+  sendmsg(messageId, subject, finalRecipient, finalMail)
+
+else:
+  if enabled == 1:
+
+    # The disposable mail address is enabled
+    dbCursor.execute("UPDATE `disposableMailAddress` SET `forwarded` = `forwarded` + 1 WHERE `mailAddress` = " + recipient + ";")
+    sendmsg(messageId, subject, finalRecipient, finalMail)
+
+  else:
+
+    # The disposable mail address is disabled
+    dbCursor.execute("UPDATE `disposableMailAddress` SET `dropped` = `dropped` + 1 WHERE `mailAddress` = " + recipient + ";")
+    dropmsg(messageId, subject, finalRecipient)
+
+dbCursor.close()
