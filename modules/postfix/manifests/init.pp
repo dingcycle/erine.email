@@ -15,7 +15,7 @@ class postfix
     ensure     => present,
     uid        => '142',
     gid        => 'spameater',
-    shell      => '/bin/false',
+    shell      => '/usr/sbin/nologin',
     home       => '/home/spameater',
     managehome => true,
     password   => '*',

@@ -67,7 +67,7 @@ class database
     ],
     require => [
       User['spameater'],
-      User['www-data'],
+      File['/home/www-data'],
       File['/root/mkdb.sh'],
       File['/root/mkdb.sql'],
       Package['mariadb-server'],
