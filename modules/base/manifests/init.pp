@@ -8,6 +8,7 @@ class base
     'strace',
     'sysstat',
     'tree',
+    'vim',
     'whois',
   ]:
     ensure => present,
