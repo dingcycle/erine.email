@@ -8,21 +8,34 @@ import os
 import re
 import subprocess
 import sys
+import time
+
+# Exit codes from <sysexits.h>
+EX_TEMPFAIL = 75    # Postfix places the message in the deferred mail queue and tries again later
+EX_UNAVAILABLE = 69 # The mail is bounced by terminating with exit status 69
+
+def execQuery(query):
+  try:
+    dbCursor.execute(query)
+  except Exception as e:
+    logging.critical("Exception while executing the following query: " + query)
+    logging.critical(str(e))
+    sys.exit(EX_TEMPFAIL)
 
 def loopmsg(messageId, subject, finalRecipient):
   logging.info("Message-ID " + messageId + " already processed")
-  dbCursor.execute("INSERT INTO `message` (messageId, subject, rcptTo, status) VALUES ('" + messageId + "', '" + subject + "', '" + finalRecipient + "', 'looped'); COMMIT;")
+  execQuery("INSERT INTO `message` (messageId, subject, rcptTo, status) VALUES ('" + messageId + "', '" + subject + "', '" + finalRecipient + "', 'looped');")
 
 def sendmsg(messageId, subject, finalRecipient, finalMail):
   logging.info("Sending Message-ID " + messageId)
-  dbCursor.execute("INSERT INTO `message` (messageId, subject, rcptTo, status) VALUES ('" + messageId + "', '" + subject + "', '" + finalRecipient + "', 'sent'); COMMIT;")
+  execQuery("INSERT INTO `message` (messageId, subject, rcptTo, status) VALUES ('" + messageId + "', '" + subject + "', '" + finalRecipient + "', 'sent');")
   # TODO - Hard-coding the sender is for proof of concept only. It will be removed later.
   p = subprocess.Popen(['/usr/sbin/sendmail', '-G', '-i', '-f', '<dpw2vtlkwq@erine.email>', '--', '<' + finalRecipient + '>'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
   l = p.communicate(input=finalMail)
 
 def dropmsg(messageId, subject, finalRecipient):
   logging.info("Dropping Message-ID " + messageId)
-  dbCursor.execute("INSERT INTO `message` (messageId, subject, rcptTo, status) VALUES ('" + messageId + "', '" + subject + "', '" + finalRecipient + "', 'dropped'); COMMIT;")
+  execQuery("INSERT INTO `message` (messageId, subject, rcptTo, status) VALUES ('" + messageId + "', '" + subject + "', '" + finalRecipient + "', 'dropped');")
 
 # Be sure /var/log/spameater/spameater.log exists and is accessible to spameater user
 # On exception raising, do not use logging to display the error as something's wrong with it
@@ -30,13 +43,13 @@ try:
   logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=logging.INFO, filename="/var/log/spameater/spameater.log")
 except Exception as e:
   print "CRITICAL " + str(e)
-  sys.exit(1)
+  sys.exit(EX_UNAVAILABLE)
 
 # Postfix feeds this script using a pipe, what means the e-mail is sent on stdin
 # If the script had been launched manually, do not use logging to display the error
 if os.isatty(sys.stdin.fileno()):
   print "CRITICAL Do not run this command by hand"
-  sys.exit(1)
+  sys.exit(EX_UNAVAILABLE)
 originalMail = sys.stdin.readlines()
 
 # spameater is called by Postfix using arguments:
@@ -48,20 +61,21 @@ originalMail = sys.stdin.readlines()
 # Those arguments are used to rewrite the e-mail and to call sendmail
 if len(sys.argv) != 3:
   logger.critical(str(len(sys.argv)) + " arguments instead of 3")
-  sys.exit(1)
+  sys.exit(EX_UNAVAILABLE)
 sender = sys.argv[1]
 recipient = sys.argv[2]
 
-# Connect to spameater database
+# Connect to spameater database and begin a transaction
 try:
   f = open('/home/spameater/.mariadb.pwd', 'r')
   password = f.readline().strip()
   f.close()
   connector = MySQLdb.connect(host = "127.0.0.1", connect_timeout = 2, user = "spameater", passwd=password, db="spameater")
   dbCursor = connector.cursor()
+  execQuery("BEGIN;")
 except Exception as e:
   logging.critical(str(e))
-  sys.exit(1)
+  sys.exit(EX_TEMPFAIL)
 
 # Forge finalRecipient or exit if incorrect
 # Username column has a UNIQUE constraint. So using fetchone() is enough.
@@ -69,15 +83,15 @@ except Exception as e:
 r = re.match("([^@]+)\.([^@\.]+)@([^@]+)$", recipient)
 if not r:
   logging.critical("Incorrect recipient: " + recipient)
-  sys.exit(0)
+  sys.exit(EX_UNAVAILABLE)
 if r.group(3) != "erine.email":
   logging.critical("Incorrect domain name: " + r.group(3))
-  sys.exit(0)
-dbCursor.execute("SELECT Email FROM Users WHERE Username = '" + r.group(2) + "';")
+  sys.exit(EX_UNAVAILABLE)
+execQuery("SELECT `Email` FROM `Users` WHERE `Username` = '" + r.group(2) + "';")
 finalRecipient = dbCursor.fetchone()
 if not finalRecipient:
   logging.critical("Incorrect user name: " + r.group(2))
-  sys.exit(0)
+  sys.exit(EX_UNAVAILABLE)
 finalRecipient = finalRecipient[0]
 
 # Forge finalMail, messageId and subject
@@ -115,41 +129,43 @@ try:
     finalMail += line
   if not messageId:
     logging.critical("Message-ID not found")
-    sys.exit(1)
+    sys.exit(EX_UNAVAILABLE)
   if not subject:
     logging.warning("Subject not found")
 except Exception as e:
   logging.critical(str(e))
-  sys.exit(1)
+  sys.exit(EX_UNAVAILABLE)
 
 # Exit if message already processed
-dbCursor.execute("SELECT `id` FROM `message` WHERE `messageId` = '" + messageId + "';")
+execQuery("SELECT `id` FROM `message` WHERE `messageId` = '" + messageId + "';")
 if dbCursor.fetchone():
   loopmsg(messageId, subject, finalRecipient)
   dbCursor.close()
-  sys.exit(0)
+  sys.exit(EX_UNAVAILABLE)
 
 # Create or update disposable mail address in DB. Call sendmsg() or dropmsg().
 # mailAddress column has a UNIQUE constraint. So using fetchone() is enough.
-dbCursor.execute("SELECT `enabled` FROM disposableMailAddress WHERE mailAddress = '" + recipient + "';")
+execQuery("SELECT `enabled` FROM `disposableMailAddress` WHERE mailAddress = '" + recipient + "';")
 enabled = dbCursor.fetchone()
 if not enabled:
 
   # The disposable mail address is used for the first time
-  dbCursor.execute("INSERT INTO `disposableMailAddress` (mailAddress, forwarded) VALUES ('" + recipient + "', 1);")
+  execQuery("INSERT INTO `disposableMailAddress` (mailAddress, forwarded) VALUES ('" + recipient + "', 1);")
   sendmsg(messageId, subject, finalRecipient, finalMail)
 
 else:
-  if enabled == 1:
+  if enabled[0] == 1:
 
     # The disposable mail address is enabled
-    dbCursor.execute("UPDATE `disposableMailAddress` SET `forwarded` = `forwarded` + 1 WHERE `mailAddress` = " + recipient + ";")
+    execQuery("UPDATE `disposableMailAddress` SET `forwarded` = `forwarded` + 1 WHERE `mailAddress` = '" + recipient + "';")
     sendmsg(messageId, subject, finalRecipient, finalMail)
 
   else:
 
     # The disposable mail address is disabled
-    dbCursor.execute("UPDATE `disposableMailAddress` SET `dropped` = `dropped` + 1 WHERE `mailAddress` = " + recipient + ";")
+    execQuery("UPDATE `disposableMailAddress` SET `dropped` = `dropped` + 1 WHERE `mailAddress` = '" + recipient + "';")
     dropmsg(messageId, subject, finalRecipient)
 
+# Terminate transaction and close connection to spameater database
+execQuery("COMMIT;")
 dbCursor.close()
