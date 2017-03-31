@@ -79,13 +79,9 @@ except Exception as e:
 
 # Forge finalRecipient or exit if incorrect
 # Username column has a UNIQUE constraint. So using fetchone() is enough.
-# TODO - Hard-coding the domain name is for proof of concept only. It will be removed later.
 r = re.match("([^@]+)\.([^@\.]+)@([^@]+)$", recipient)
 if not r:
   logging.critical("Incorrect recipient: " + recipient)
-  sys.exit(EX_UNAVAILABLE)
-if r.group(3) != "erine.email":
-  logging.critical("Incorrect domain name: " + r.group(3))
   sys.exit(EX_UNAVAILABLE)
 execQuery("SELECT `Email` FROM `Users` WHERE `Username` = '" + r.group(2) + "';")
 finalRecipient = dbCursor.fetchone()

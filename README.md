@@ -57,6 +57,19 @@ As root, launch Puppet agent:
 puppet agent --test --environment=production
 ```
 
+Then, tell Postfix what is(are) your domain name(s), creating a `/etc/postfix/relaydomains` file, owned by root, with 0644 permissions. You need to set 1 domain name per line, like in this example:
+
+```
+erine.email #erine.email
+```
+
+Generate the relaydomains.db file and reload Postfix:
+
+```
+postmap /etc/postfix/relaydomains
+systemctl reload postfix.service
+```
+
 That's it!
 
 ## OK, and now, how to use it?
