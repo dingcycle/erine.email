@@ -66,6 +66,12 @@ class postfix
     refreshonly => true,
   }
 
+  exec { 'postmapRelaydomains':
+    command     => '/usr/sbin/postmap /etc/postfix/relaydomains',
+    refreshonly => true,
+    notify  => Exec['reloadPostfix'],
+  }
+
   file { '/etc/postfix/main.cf':
     ensure  => file,
     mode    => '0644',
@@ -74,6 +80,17 @@ class postfix
     content => template('postfix/main.cf.erb'),
     notify  => Exec['reloadPostfix'],
     # We need the /etc/postfix/ directory and not erasing our main.cf with the postfix package one
+    require => Package['postfix'],
+  }
+
+  file { '/etc/postfix/relaydomains':
+    ensure  => file,
+    mode    => '0644',
+    owner   => 'root',
+    group   => 'root',
+    content => template('postfix/relaydomains.erb'),
+    notify  => Exec['postmapRelaydomains'],
+    # We need the /etc/postfix/ directory
     require => Package['postfix'],
   }
 

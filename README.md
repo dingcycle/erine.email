@@ -49,25 +49,32 @@ iptables -A INPUT -p tcp --dport 8140 -j REJECT
 apt-get install iptables-persistent
 ```
 
+Tell Puppet what is(are) your domain name(s) using Hiera. Create `/etc/puppet/hiera.yaml` with the following content:
+
+```
+:backends:
+  - yaml
+:logger: puppet
+:hierarchy:
+  - "%{hostname}"
+  - common
+:yaml:
+  :datadir: "/etc/puppetlabs/code/hieradata"
+```
+
+Create the ``/etc/puppetlabs/code/hieradata/`facter hostname`.yaml`` file with your domain names. For example, my domain name is `erine.email`:
+
+```
+domainnames:
+  - erine.email
+```
+
 And reboot.
 
 As root, launch Puppet agent:
 
 ```
 puppet agent --test --environment=production
-```
-
-Then, tell Postfix what is(are) your domain name(s), creating a `/etc/postfix/relaydomains` file, owned by root, with 0644 permissions. You need to set 1 domain name per line, like in this example:
-
-```
-erine.email #erine.email
-```
-
-Generate the relaydomains.db file and reload Postfix:
-
-```
-postmap /etc/postfix/relaydomains
-systemctl reload postfix.service
 ```
 
 That's it!

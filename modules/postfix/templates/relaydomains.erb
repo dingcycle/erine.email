@@ -1,0 +1,3 @@
+<%- for domain in scope.function_hiera(["domainnames"]) -%>
+<%= domain %> #<%= domain %>
+<%- end -%>
