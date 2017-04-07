@@ -17,13 +17,24 @@ fi
 
 # set a fancy prompt (non-color, overwrite the one in /etc/profile)
 #PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
+
 # Forget black, enjoy color
 case "$TERM" in
   xterm-256color)
+<%- if scope.function_hiera(["domainnames"]).length == 1 -%>
+<%- domain = scope.function_hiera(["domainnames"])[0] -%>
+    PS1='${debian_chroot:+($debian_chroot)}\[$(tput setaf 12)\]\u@\h-\[$(tput setaf 44)\]<%= domain %>\[$(tput setaf 12)\]:\w\$ \[$(tput sgr0)\]'
+<%- else -%>
     PS1='${debian_chroot:+($debian_chroot)}\[$(tput setaf 12)\]\u@\h:\w\$ \[$(tput sgr0)\]'
+<%- end -%>
     ;;
   *)
+<%- if scope.function_hiera(["domainnames"]).length == 1 -%>
+<%- domain = scope.function_hiera(["domainnames"])[0] -%>
+    PS1='${debian_chroot:+($debian_chroot)}\[$(tput setaf 6)\]\u@\h-<%= domain %>:\w\$ \[$(tput sgr0)\]'
+<%- else -%>
     PS1='${debian_chroot:+($debian_chroot)}\[$(tput setaf 6)\]\u@\h:\w\$ \[$(tput sgr0)\]'
+<%- end -%>
     ;;
 esac
 

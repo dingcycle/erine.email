@@ -15,11 +15,11 @@ class base
   }
 
   file { '/etc/bash.bashrc':
-    ensure => file,
-    mode   => '0644',
-    owner  => 'root',
-    group  => 'root',
-    source => 'puppet:///modules/base/bash.bashrc',
+    ensure  => file,
+    mode    => '0644',
+    owner   => 'root',
+    group   => 'root',
+    content => template('base/bash.bashrc.erb'),
   }
 
 }
