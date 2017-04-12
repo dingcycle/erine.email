@@ -69,3 +69,5 @@ GRANT SELECT, INSERT ON `spameater`.`message` TO 'spameater'@'%';
 --
 
 GRANT SELECT, UPDATE, INSERT ON `spameater`.`Users` TO 'www'@'%';
+GRANT SELECT ON `spameater`.`disposableMailAddress` TO 'www'@'%';
+GRANT SELECT ON `spameater`.`message` TO 'www'@'%';
