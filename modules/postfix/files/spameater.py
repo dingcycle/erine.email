@@ -83,11 +83,12 @@ r = re.match("([^@]+)\.([^@\.]+)@([^@]+)$", recipient)
 if not r:
   logging.critical("Incorrect recipient: " + recipient)
   sys.exit(EX_UNAVAILABLE)
-execQuery("SELECT `Email` FROM `Users` WHERE `Username` = '" + r.group(2) + "';")
+execQuery("SELECT `Email`, `ID` FROM `Users` WHERE `Username` = '" + r.group(2) + "';")
 finalRecipient = dbCursor.fetchone()
 if not finalRecipient:
   logging.critical("Incorrect user name: " + r.group(2))
   sys.exit(EX_UNAVAILABLE)
+userID = finalRecipient[1]
 finalRecipient = finalRecipient[0]
 
 # Forge finalMail, messageId and subject
@@ -146,7 +147,7 @@ enabled = dbCursor.fetchone()
 if not enabled:
 
   # The disposable mail address is used for the first time
-  execQuery("INSERT INTO `disposableMailAddress` (mailAddress, forwarded) VALUES ('" + recipient + "', 1);")
+  execQuery("INSERT INTO `disposableMailAddress` (mailAddress, userID, forwarded) VALUES ('" + recipient + "', " + str(userID) + ", 1);")
   sendmsg(messageId, subject, finalRecipient, finalMail)
 
 else:

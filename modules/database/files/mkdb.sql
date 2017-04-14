@@ -31,12 +31,15 @@ CREATE TABLE `Users` (
 
 CREATE TABLE `disposableMailAddress` (
   `mailAddress` varchar(254) NOT NULL,
+  `userID` int(7) unsigned NOT NULL,
   `created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `enabled` tinyint(1) NOT NULL DEFAULT '1',
   `remaining` smallint(5) unsigned DEFAULT NULL,
   `forwarded` int(10) unsigned NOT NULL DEFAULT '0',
   `dropped` int(10) unsigned NOT NULL DEFAULT '0',
-  PRIMARY KEY (`mailAddress`)
+  PRIMARY KEY (`mailAddress`),
+  KEY `userID` (`userID`),
+  CONSTRAINT `disposableMailAddress_ibfk_1` FOREIGN KEY (`userID`) REFERENCES `Users` (`ID`)
 ) ENGINE=InnoDB;
 
 --
