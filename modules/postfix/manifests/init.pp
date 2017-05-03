@@ -69,7 +69,7 @@ class postfix
   exec { 'postmapRelaydomains':
     command     => '/usr/sbin/postmap /etc/postfix/relaydomains',
     refreshonly => true,
-    notify  => Exec['reloadPostfix'],
+    notify      => Exec['reloadPostfix'],
   }
 
   file { '/etc/postfix/main.cf':

@@ -37,6 +37,12 @@ def dropmsg(messageId, subject, finalRecipient):
   logging.info("Dropping Message-ID " + messageId)
   execQuery("INSERT INTO `message` (messageId, subject, rcptTo, status) VALUES ('" + messageId + "', '" + subject + "', '" + finalRecipient + "', 'dropped');")
 
+# Retrieve user email and ID
+# Username column has a UNIQUE constraint. So using fetchone() is enough.
+def fetchUser(username, reserved):
+  execQuery("SELECT `Email`, `ID` FROM `Users` WHERE `Username` = '" + username + "' AND `Reserved` = " + str(reserved) + ";")
+  return dbCursor.fetchone()
+
 # Be sure /var/log/spameater/spameater.log exists and is accessible to spameater user
 # On exception raising, do not use logging to display the error as something's wrong with it
 try:
@@ -78,16 +84,28 @@ except Exception as e:
   sys.exit(EX_TEMPFAIL)
 
 # Forge finalRecipient or exit if incorrect
-# Username column has a UNIQUE constraint. So using fetchone() is enough.
 r = re.match("([^@]+)\.([^@\.]+)@([^@]+)$", recipient)
-if not r:
-  logging.critical("Incorrect recipient: " + recipient)
-  sys.exit(EX_UNAVAILABLE)
-execQuery("SELECT `Email`, `ID` FROM `Users` WHERE `Username` = '" + r.group(2) + "';")
-finalRecipient = dbCursor.fetchone()
-if not finalRecipient:
-  logging.critical("Incorrect user name: " + r.group(2))
-  sys.exit(EX_UNAVAILABLE)
+if r:
+  finalRecipient = fetchUser(r.group(2), 0)
+  if not finalRecipient:
+    if fetchUser(r.group(2), 1):
+      logging.critical("Incorrect user usage: " + r.group(2) + " exists, but as a reserved user")
+    else:
+      logging.critical("Incorrect user name: " + r.group(2))
+    sys.exit(EX_UNAVAILABLE)
+else:
+  r = re.match("([^@\.]+)@([^@]+)$", recipient)
+  if r:
+    finalRecipient = fetchUser(r.group(1), 1)
+    if not finalRecipient:
+      if fetchUser(r.group(1), 0):
+        logging.critical("Incorrect user usage: " + r.group(1) + " exists, but as a not reserved user")
+      else:
+        logging.critical("Incorrect user name: " + r.group(1))
+      sys.exit(EX_UNAVAILABLE)
+  else:
+    logging.critical("Incorrect recipient: " + recipient)
+    sys.exit(EX_UNAVAILABLE)
 userID = finalRecipient[1]
 finalRecipient = finalRecipient[0]
 

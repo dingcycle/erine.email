@@ -84,3 +84,20 @@ That's it!
 So that your server forwards something.user@domain to your real email address, you'll have to fill the `Users` table of the `spameater` database. At least the `Username` and `Email` columns. You can do it manually with a mysql client, but the nice way should be developping a web site to do it, and to read the interesting statistics of the `disposableMailAddress` and `message` tables.
 
 Of course, you'll have to set the `MX` DNS record of your domain name to your server. Do not forget the `spf` record either.
+
+### Reserved users
+
+Note that this part is optional, you do not HAVE to worry about.
+
+A "reserved users" is a user whose disposable email addresses operate differently from the something.user@domain pattern. For this user, your server will forward user@domain to the user's real email address. Be careful, for this kind of users, everything sent to something.user@domain will be dropped!
+
+ | Normal users | Reserved users
+-|--------------|---------------
+something.user@domain | Forward | Drop
+user@domain | Drop | Forward
+
+A user will be "reserved" if the `Reserved` column of the `Users` table is set to 1. The default value is 0 (normal user).
+
+OK, I got it, but what is that for?
+
+The [RFC 2142](https://www.ietf.org/rfc/rfc2142.txt) tells that you should reserve mailbox names for common services, roles and functions. For instance, the postmaster@domain email address should route emails to a person responsible for the site's mail system or to a person with responsibility for general site operation. You also have email addresses like webmaster@domain, abuse@domain...

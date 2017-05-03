@@ -13,6 +13,7 @@ USE `spameater`;
 CREATE TABLE `Users` (
   `ID` int(7) unsigned NOT NULL AUTO_INCREMENT,
   `Username` varchar(15) NOT NULL,
+  `Reserved` tinyint(1) NOT NULL DEFAULT '0',
   `first_name` varchar(15) NOT NULL,
   `last_name` varchar(15) NOT NULL,
   `Password` varchar(40) NOT NULL,
