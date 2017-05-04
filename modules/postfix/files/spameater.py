@@ -68,8 +68,8 @@ originalMail = sys.stdin.readlines()
 if len(sys.argv) != 3:
   logger.critical(str(len(sys.argv)) + " arguments instead of 3")
   sys.exit(EX_UNAVAILABLE)
-sender = sys.argv[1]
-recipient = sys.argv[2]
+sender = sys.argv[1].lower()
+recipient = sys.argv[2].lower()
 
 # Connect to spameater database and begin a transaction
 try:
@@ -124,14 +124,14 @@ try:
       continue
     r = re.match("Return-Path:\s(.+)$", line, re.IGNORECASE)
     if r:
-      if r.group(1) != "<" + sender + ">":
+      if r.group(1).lower() != "<" + sender + ">":
         logging.warning("Return-Path (" + r.group(1) + ") is different than sender (" + sender + ")")
       # TODO - Hard-coding the "Return-Path" field is for proof of concept only. It will be removed later.
       finalMail += "Return-Path: <dpw2vtlkwq@erine.email>\n"
       continue
     r = re.match("(\s+for\s+)(.+);(.+)$", line, re.IGNORECASE)
     if r:
-      if r.group(2) != "<" + recipient + ">":
+      if r.group(2).lower() != "<" + recipient + ">":
         logging.warning("for (" + r.group(2) + ") is different than recipient (" + recipient + ")")
       finalMail += r.group(1) + "<" + finalRecipient + ">" + r.group(3) + "\n"
       continue

@@ -1,8 +1,9 @@
 --
 -- Current Database: `spameater`
+-- WARNING, do NOT replace the below collation by a case sensitive one. It would lead to unexpected behaviors.
 --
 
-CREATE DATABASE `spameater`;
+CREATE DATABASE `spameater` DEFAULT CHARACTER SET = utf8 DEFAULT COLLATE = utf8_general_ci;
 
 USE `spameater`;
 
@@ -28,6 +29,7 @@ CREATE TABLE `Users` (
 
 --
 -- Table structure for table `disposableMailAddress`
+-- WARNING, do NOT replace the below InnoDB engine, as the spameater Postfix filter uses transactions on this table.
 --
 
 CREATE TABLE `disposableMailAddress` (
@@ -45,6 +47,7 @@ CREATE TABLE `disposableMailAddress` (
 
 --
 -- Table structure for table `message`
+-- WARNING, do NOT replace the below InnoDB engine, as the spameater Postfix filter uses transactions on this table.
 --
 
 CREATE TABLE `message` (
