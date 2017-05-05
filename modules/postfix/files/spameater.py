@@ -22,20 +22,20 @@ def execQuery(query):
     logging.critical(str(e))
     sys.exit(EX_TEMPFAIL)
 
-def loopmsg(messageId, subject, finalRecipient):
+def loopmsg(messageId, disposableMailAddress, subject, finalRecipient):
   logging.info("Message-ID " + messageId + " already processed")
-  execQuery("INSERT INTO `message` (messageId, subject, rcptTo, status) VALUES ('" + messageId + "', '" + subject + "', '" + finalRecipient + "', 'looped');")
+  execQuery("INSERT INTO `message` (messageId, disposableMailAddress, subject, rcptTo, status) VALUES ('" + messageId + "', '" + disposableMailAddress + "', '" + subject + "', '" + finalRecipient + "', 'looped');")
 
-def sendmsg(messageId, subject, finalRecipient, finalMail):
+def sendmsg(messageId, disposableMailAddress, subject, finalRecipient, finalMail):
   logging.info("Sending Message-ID " + messageId)
-  execQuery("INSERT INTO `message` (messageId, subject, rcptTo, status) VALUES ('" + messageId + "', '" + subject + "', '" + finalRecipient + "', 'sent');")
+  execQuery("INSERT INTO `message` (messageId, disposableMailAddress, subject, rcptTo, status) VALUES ('" + messageId + "', '" + disposableMailAddress + "', '" + subject + "', '" + finalRecipient + "', 'sent');")
   # TODO - Hard-coding the sender is for proof of concept only. It will be removed later.
   p = subprocess.Popen(['/usr/sbin/sendmail', '-G', '-i', '-f', '<dpw2vtlkwq@erine.email>', '--', '<' + finalRecipient + '>'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
   l = p.communicate(input=finalMail)
 
-def dropmsg(messageId, subject, finalRecipient):
+def dropmsg(messageId, disposableMailAddress, subject, finalRecipient):
   logging.info("Dropping Message-ID " + messageId)
-  execQuery("INSERT INTO `message` (messageId, subject, rcptTo, status) VALUES ('" + messageId + "', '" + subject + "', '" + finalRecipient + "', 'dropped');")
+  execQuery("INSERT INTO `message` (messageId, disposableMailAddress, subject, rcptTo, status) VALUES ('" + messageId + "', '" + disposableMailAddress + "', '" + subject + "', '" + finalRecipient + "', 'dropped');")
 
 # Retrieve user email and ID
 # Username column has a UNIQUE constraint. So using fetchone() is enough.
@@ -160,26 +160,28 @@ if dbCursor.fetchone():
 
 # Create or update disposable mail address in DB. Call sendmsg() or dropmsg().
 # mailAddress column has a UNIQUE constraint. So using fetchone() is enough.
-execQuery("SELECT `enabled` FROM `disposableMailAddress` WHERE mailAddress = '" + recipient + "';")
-enabled = dbCursor.fetchone()
-if not enabled:
+execQuery("SELECT `enabled`, `mailAddress` FROM `disposableMailAddress` WHERE mailAddress = '" + recipient + "';")
+disposableMailAddress = dbCursor.fetchone()
+if not disposableMailAddress:
 
   # The disposable mail address is used for the first time
   execQuery("INSERT INTO `disposableMailAddress` (mailAddress, userID, forwarded) VALUES ('" + recipient + "', " + str(userID) + ", 1);")
-  sendmsg(messageId, subject, finalRecipient, finalMail)
+  execQuery("SELECT `mailAddress` FROM `disposableMailAddress` WHERE mailAddress = '" + recipient + "';")
+  disposableMailAddress = dbCursor.fetchone()
+  sendmsg(messageId, disposableMailAddress[0], subject, finalRecipient, finalMail)
 
 else:
-  if enabled[0] == 1:
+  if disposableMailAddress[0] == 1:
 
     # The disposable mail address is enabled
     execQuery("UPDATE `disposableMailAddress` SET `forwarded` = `forwarded` + 1 WHERE `mailAddress` = '" + recipient + "';")
-    sendmsg(messageId, subject, finalRecipient, finalMail)
+    sendmsg(messageId, disposableMailAddress[1], subject, finalRecipient, finalMail)
 
   else:
 
     # The disposable mail address is disabled
     execQuery("UPDATE `disposableMailAddress` SET `dropped` = `dropped` + 1 WHERE `mailAddress` = '" + recipient + "';")
-    dropmsg(messageId, subject, finalRecipient)
+    dropmsg(messageId, disposableMailAddress[1], subject, finalRecipient)
 
 # Terminate transaction and close connection to spameater database
 execQuery("COMMIT;")
