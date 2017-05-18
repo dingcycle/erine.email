@@ -5,7 +5,9 @@ import MySQLdb
 
 import logging
 import os
+import random
 import re
+import string
 import subprocess
 import sys
 import time
@@ -13,6 +15,10 @@ import time
 # Exit codes from <sysexits.h>
 EX_TEMPFAIL = 75    # Postfix places the message in the deferred mail queue and tries again later
 EX_UNAVAILABLE = 69 # The mail is bounced by terminating with exit status 69
+
+# Regular expression that email addresses must match
+# You HAVE to prefix this regex by ^ and suffix it by $ to match an email address exactly
+emailAddressRegex = '[_a-z0-9-]+(\.[_a-z0-9-]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,})'
 
 def execQuery(query):
   try:
@@ -23,17 +29,53 @@ def execQuery(query):
     logging.critical("Deferring email")
     sys.exit(EX_TEMPFAIL)
 
+# Extract email address from a complete address
+def getAddress(fullAddress):
+  r = re.match(".*<(" + emailAddressRegex + ")>$", fullAddress)
+  if r:
+    return r.group(1)
+  r = re.match("(" + emailAddressRegex + ")", fullAddress)
+  if r:
+    return r.group(1)
+  logger.critical("Invalid email address: \"" + fullAddress + "\"")
+  logging.critical("Bouncing email")
+  sys.exit(EX_UNAVAILABLE)
+
+# Use source and destination email addresses to forge reply email address.
+# Fill database with those informations so recipients can reply.
+def getReplyAddress(fromAddress, toAddress):
+  # TODO - Do the fromAddress / toAddress set exists in DB? If so, return its mailAddress field
+
+  # The local is a random string
+  replyAddress = ''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(15))
+
+  # Add the destination address domain
+  r = re.match(".+(@[^@]+)$", toAddress)
+  if not r:
+    logger.critical("Invalid email address: \"" + toAddress + "\"")
+    logging.critical("Bouncing email")
+    sys.exit(EX_UNAVAILABLE)
+  replyAddress += r.group(1)
+
+  # TODO - Insert replyAddress in database
+
+  replyAddress = getAddress(fromAddress) + " <" + replyAddress + ">"
+  r = re.match("(.+)\s*<" + emailAddressRegex + ">$", fromAddress)
+  if r:
+    return r.group(1) + " - " + replyAddress
+  return replyAddress
+
 def loopmsg(messageId, disposableMailAddress, subject, finalRecipient):
   logging.info("Message-ID " + messageId + " already processed")
   execQuery("INSERT INTO `message` (messageId, disposableMailAddress, subject, rcptTo, status) VALUES ('" + messageId + "', '" + disposableMailAddress + "', '" + subject + "', '" + finalRecipient + "', 'looped');")
 
-def sendmsg(messageId, disposableMailAddress, subject, finalRecipient, finalMail):
+def sendmsg(messageId, disposableMailAddress, subject, finalRecipient, finalMail, finalMailFrom):
   logging.info("Sending Message-ID " + messageId)
   execQuery("INSERT INTO `message` (messageId, disposableMailAddress, subject, rcptTo, status) VALUES ('" + messageId + "', '" + disposableMailAddress + "', '" + subject + "', '" + finalRecipient + "', 'sent');")
   try:
-    # TODO - Hard-coding the sender is for proof of concept only. It will be removed later.
-    p = subprocess.Popen(['/usr/sbin/sendmail', '-G', '-i', '-f', '<dpw2vtlkwq@erine.email>', '--', '<' + finalRecipient + '>'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    p = subprocess.Popen(['/usr/sbin/sendmail', '-G', '-i', '-f', finalMailFrom, '--', '<' + finalRecipient + '>'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
     l = p.communicate(input=finalMail)
+    print "aaa"
   except Exception as e:
     logging.critical("Exception while launching sendmail: " + str(e))
     logging.critical("Deferring email")
@@ -69,6 +111,10 @@ def main():
   #    argv=/usr/lib/postfix/spameater ${sender} ${recipient}
   #
   # Those arguments are used to rewrite the e-mail and to call sendmail
+  #
+  # ${sender} and ${recipient} are just the email addresses. They do NOT include
+  # the email label nor the <> characters (the format is NOT
+  # "Plops <xxx@yyy.zzz>" nor "<xxx@yyy.zzz>" but "xxx@yyy.zzz").
   if len(sys.argv) != 3:
     logger.critical(str(len(sys.argv)) + " arguments instead of 3")
     logging.critical("Bouncing email")
@@ -126,17 +172,14 @@ def main():
   for line in originalMail:
     r = re.match("From:\s(.+)$", line, re.IGNORECASE)
     if r:
-      if not re.match(".*<" + sender + ">$", r.group(1), re.IGNORECASE):
+      if not re.match(".*<" + sender + ">$", r.group(1), re.IGNORECASE) and sender.lower() != r.group(1).lower():
         logging.warning("From (" + r.group(1) + ") is different than sender (" + sender + ")")
-      # TODO - Hard-coding the "From" field is for proof of concept only. It will be removed later.
-      finalMail += "From: <dpw2vtlkwq@erine.email>\n"
+      finalMailFrom = getReplyAddress(r.group(1), recipient)
+      finalMail += "From: " + finalMailFrom + "\n"
       continue
-    r = re.match("Return-Path:\s(.+)$", line, re.IGNORECASE)
+    r = re.match("Reply-to:\s(.+)$", line, re.IGNORECASE)
     if r:
-      if r.group(1).lower() != "<" + sender + ">":
-        logging.warning("Return-Path (" + r.group(1) + ") is different than sender (" + sender + ")")
-      # TODO - Hard-coding the "Return-Path" field is for proof of concept only. It will be removed later.
-      finalMail += "Return-Path: <dpw2vtlkwq@erine.email>\n"
+      finalMail += "Reply-to: " + getReplyAddress(r.group(1), recipient) + "\n"
       continue
     r = re.match("(\s+for\s+)(.+);(.+)$", line, re.IGNORECASE)
     if r:
@@ -176,14 +219,14 @@ def main():
     execQuery("INSERT INTO `disposableMailAddress` (mailAddress, userID, forwarded) VALUES ('" + recipient + "', " + str(userID) + ", 1);")
     execQuery("SELECT `mailAddress` FROM `disposableMailAddress` WHERE mailAddress = '" + recipient + "';")
     disposableMailAddress = dbCursor.fetchone()
-    sendmsg(messageId, disposableMailAddress[0], subject, finalRecipient, finalMail)
+    sendmsg(messageId, disposableMailAddress[0], subject, finalRecipient, finalMail, getAddress(finalMailFrom))
 
   else:
     if disposableMailAddress[0] == 1:
 
       # The disposable mail address is enabled
       execQuery("UPDATE `disposableMailAddress` SET `forwarded` = `forwarded` + 1 WHERE `mailAddress` = '" + recipient + "';")
-      sendmsg(messageId, disposableMailAddress[1], subject, finalRecipient, finalMail)
+      sendmsg(messageId, disposableMailAddress[1], subject, finalRecipient, finalMail, getAddress(finalMailFrom))
 
     else:
 
