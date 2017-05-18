@@ -64,12 +64,27 @@ CREATE TABLE `message` (
 ) ENGINE=InnoDB;
 
 --
+-- Table structure for table `replyAddress`
+-- WARNING, do NOT replace the below InnoDB engine, as the spameater Postfix filter uses transactions on this table.
+--
+
+CREATE TABLE `replyAddress` (
+  `mailAddress` varchar(254) NOT NULL,
+  `disposableMailAddress` varchar(254) NOT NULL,
+  `foreignAddress` varchar(254) NOT NULL,
+  UNIQUE KEY `mailAddress` (`mailAddress`),
+  UNIQUE KEY `disposableMailAddress` (`disposableMailAddress`,`foreignAddress`),
+  CONSTRAINT `replyAddress_ibfk_1` FOREIGN KEY (`disposableMailAddress`) REFERENCES `disposableMailAddress` (`mailAddress`)
+) ENGINE=InnoDB;
+
+--
 -- Grants for user `spameater`
 --
 
 GRANT SELECT ON `spameater`.`Users` TO 'spameater'@'%';
 GRANT SELECT, UPDATE, INSERT ON `spameater`.`disposableMailAddress` TO 'spameater'@'%';
 GRANT SELECT, INSERT ON `spameater`.`message` TO 'spameater'@'%';
+GRANT SELECT, INSERT ON `spameater`.`replyAddress` TO 'spameater'@'%';
 
 --
 -- Grants for user `www`
