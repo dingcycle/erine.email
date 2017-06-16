@@ -38,8 +38,9 @@ CREATE TABLE `disposableMailAddress` (
   `created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `enabled` tinyint(1) NOT NULL DEFAULT '1',
   `remaining` smallint(5) unsigned DEFAULT NULL,
-  `forwarded` int(10) unsigned NOT NULL DEFAULT '0',
+  `sent` int(10) unsigned NOT NULL DEFAULT '0',
   `dropped` int(10) unsigned NOT NULL DEFAULT '0',
+  `sentAs` int(10) unsigned NOT NULL DEFAULT '0',
   PRIMARY KEY (`mailAddress`),
   KEY `userID` (`userID`),
   CONSTRAINT `disposableMailAddress_ibfk_1` FOREIGN KEY (`userID`) REFERENCES `Users` (`ID`)
@@ -55,9 +56,10 @@ CREATE TABLE `message` (
   `disposableMailAddress` varchar(254) DEFAULT NULL,
   `messageId` varchar(998) NOT NULL,
   `subject` varchar(998) NOT NULL,
+  `from` varchar(2048) NOT NULL,
   `rcptTo` varchar(2048) NOT NULL,
   `date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `status` ENUM('sent', 'dropped', 'looped'),
+  `status` ENUM('sent', 'dropped', 'sentAs', 'looped'),
   PRIMARY KEY (`id`),
   KEY `disposableMailAddress` (`disposableMailAddress`),
   CONSTRAINT `message_ibfk_1` FOREIGN KEY (`disposableMailAddress`) REFERENCES `disposableMailAddress` (`mailAddress`)
