@@ -88,7 +88,7 @@ def ee2f_getReplyAddress(fromAddress, toAddress):
   execQuery("SELECT `disposableMailAddress` FROM `replyAddress` WHERE `mailAddress` = '" + getAddress(toAddress) + "';")
   replyAddress = dbCursor.fetchone()
   if replyAddress:
-    execQuery("SELECT `Users`.`Email` FROM `Users` JOIN `disposableMailAddress` ON `Users`.`ID` = `disposableMailAddress`.`userID` WHERE `disposableMailAddress`.`mailAddress` = '" + replyAddress[0] + "';")
+    execQuery("SELECT `user`.`mailAddress` FROM `user` JOIN `disposableMailAddress` ON `user`.`ID` = `disposableMailAddress`.`userID` WHERE `disposableMailAddress`.`mailAddress` = '" + replyAddress[0] + "';")
     allowedEmail = dbCursor.fetchone()
     if not allowedEmail:
       logging.critical("Can not check if " + getAddress(fromAddress) + " is allowed to send an email as " + replyAddress[0] + ". Assuming yes.")
@@ -167,9 +167,9 @@ def dropmsg(messageId, disposableMailAddress, subject, finalRecipient, finalMail
   execQuery("INSERT INTO `message` (`messageId`, `disposableMailAddress`, `subject`, `from`, `rcptTo`, `status`) VALUES ('" + messageId + "', '" + disposableMailAddress + "', '" + subject + "', '" + finalMailFrom + "', '" + finalRecipient + "', 'dropped');")
 
 # Retrieve user email and ID
-# Username column has a UNIQUE constraint, so using fetchone() is enough
+# username column has a UNIQUE constraint, so using fetchone() is enough
 def fetchUser(username, reserved):
-  execQuery("SELECT `Email`, `ID` FROM `Users` WHERE `Username` = '" + username + "' AND `Reserved` = " + str(reserved) + ";")
+  execQuery("SELECT `mailAddress`, `ID` FROM `user` WHERE `username` = '" + username + "' AND `reserved` = " + str(reserved) + ";")
   return dbCursor.fetchone()
 
 # Retrieve destination complete address from reply addresses

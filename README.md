@@ -131,8 +131,8 @@ Do not forget to configure the `spf` record either.
 ## Add your first user
 
 So that your server forwards `something.user@domain` to your real email address,
-you'll have to fill the `Users` table of the `spameater` database.
-At least the `Username` and `Email` columns. You can do it manually
+you'll have to fill the `user` table of the `spameater` database.
+At least the `username` and `mailAddress` columns. You can do it manually
 with a MySQL client, but the nice way should be to have a website for it
 and to read the interesting statistics of the `disposableMailAddress` and
 `message` tables (coming soon).
@@ -170,7 +170,7 @@ sent to `something.user@domain` will be dropped!
 | something.user@domain | Forward              | Drop                   |
 | user@domain           | Drop                 | Forward                |
 
-A user will be "reserved" if the `Reserved` column of the `Users` table
+A user will be "reserved" if the `reserved` column of the `user` table
 is set to 1. The default value is 0 (normal user).
 
 OK, I got it, but what is that for?

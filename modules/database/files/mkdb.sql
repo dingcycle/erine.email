@@ -8,23 +8,23 @@ CREATE DATABASE `spameater` DEFAULT CHARACTER SET = utf8 DEFAULT COLLATE = utf8_
 USE `spameater`;
 
 --
--- Table structure for table `Users`
+-- Table structure for table `user`
 --
 
-CREATE TABLE `Users` (
+CREATE TABLE `user` (
   `ID` int(7) unsigned NOT NULL AUTO_INCREMENT,
-  `Username` varchar(15) NOT NULL,
-  `Reserved` tinyint(1) NOT NULL DEFAULT '0',
-  `first_name` varchar(15) NOT NULL,
-  `last_name` varchar(15) NOT NULL,
-  `Password` varchar(40) NOT NULL,
-  `Email` varchar(100) NOT NULL,
-  `Activated` tinyint(1) unsigned NOT NULL DEFAULT '0',
-  `Confirmation` char(40) NOT NULL DEFAULT '',
-  `RegDate` int(11) unsigned NOT NULL,
-  `LastLogin` int(11) unsigned NOT NULL DEFAULT '0',
+  `username` varchar(15) NOT NULL,
+  `reserved` tinyint(1) NOT NULL DEFAULT '0',
+  `firstName` varchar(15) NOT NULL,
+  `lastName` varchar(15) NOT NULL,
+  `password` varchar(40) NOT NULL,
+  `mailAddress` varchar(100) NOT NULL,
+  `activated` tinyint(1) unsigned NOT NULL DEFAULT '0',
+  `confirmation` char(40) NOT NULL DEFAULT '',
+  `registrationDate` int(11) unsigned NOT NULL,
+  `lastLogin` int(11) unsigned NOT NULL DEFAULT '0',
   PRIMARY KEY (`ID`),
-  UNIQUE KEY `Username` (`Username`)
+  UNIQUE KEY `username` (`username`)
 ) ENGINE=InnoDB;
 
 --
@@ -43,7 +43,7 @@ CREATE TABLE `disposableMailAddress` (
   `sentAs` int(10) unsigned NOT NULL DEFAULT '0',
   PRIMARY KEY (`mailAddress`),
   KEY `userID` (`userID`),
-  CONSTRAINT `disposableMailAddress_ibfk_1` FOREIGN KEY (`userID`) REFERENCES `Users` (`ID`)
+  CONSTRAINT `disposableMailAddress_ibfk_1` FOREIGN KEY (`userID`) REFERENCES `user` (`ID`)
 ) ENGINE=InnoDB;
 
 --
@@ -83,7 +83,7 @@ CREATE TABLE `replyAddress` (
 -- Grants for user `spameater`
 --
 
-GRANT SELECT ON `spameater`.`Users` TO 'spameater'@'%';
+GRANT SELECT ON `spameater`.`user` TO 'spameater'@'%';
 GRANT SELECT, UPDATE, INSERT ON `spameater`.`disposableMailAddress` TO 'spameater'@'%';
 GRANT SELECT, INSERT ON `spameater`.`message` TO 'spameater'@'%';
 GRANT SELECT, INSERT ON `spameater`.`replyAddress` TO 'spameater'@'%';
@@ -92,6 +92,6 @@ GRANT SELECT, INSERT ON `spameater`.`replyAddress` TO 'spameater'@'%';
 -- Grants for user `www`
 --
 
-GRANT SELECT, UPDATE, INSERT ON `spameater`.`Users` TO 'www'@'%';
+GRANT SELECT, UPDATE, INSERT ON `spameater`.`user` TO 'www'@'%';
 GRANT SELECT, UPDATE ON `spameater`.`disposableMailAddress` TO 'www'@'%';
 GRANT SELECT ON `spameater`.`message` TO 'www'@'%';
