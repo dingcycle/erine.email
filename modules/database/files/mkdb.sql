@@ -18,7 +18,7 @@ CREATE TABLE `user` (
   `firstName` varchar(15) NOT NULL,
   `lastName` varchar(15) NOT NULL,
   `password` varchar(40) NOT NULL,
-  `mailAddress` varchar(100) NOT NULL,
+  `mailAddress` varchar(254) NOT NULL,
   `activated` tinyint(1) unsigned NOT NULL DEFAULT '0',
   `confirmation` char(40) NOT NULL DEFAULT '',
   `registrationDate` int(11) unsigned NOT NULL,
