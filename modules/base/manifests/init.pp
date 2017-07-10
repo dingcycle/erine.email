@@ -3,7 +3,9 @@ class base
 {
 
   package { [
+    'bash-completion',
     'dnsutils',
+    'less',
     'lsof',
     'strace',
     'sysstat',
@@ -13,6 +15,8 @@ class base
   ]:
     ensure => present,
   }
+
+  $domainnames = hiera('domainnames')
 
   file { '/etc/bash.bashrc':
     ensure  => file,

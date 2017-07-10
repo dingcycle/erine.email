@@ -83,6 +83,8 @@ class postfix
     require => Package['postfix'],
   }
 
+  $domainnames = hiera('domainnames')
+
   file { '/etc/postfix/relaydomains':
     ensure  => file,
     mode    => '0644',

@@ -23,14 +23,13 @@ decides to spam you.
 
 ## Requirements
 
-A [Debian Jessie](https://www.debian.org/releases/jessie/) with no mail server
-running on it.
+A [Debian Stretch](https://www.debian.org/releases/stretch/) with no mail server running on it.
 
 ## Installation
 
 Follow the following steps to install a full working *erine.email* system.
 
-First, get a freshly installed server with **Debian Jessie** as operating system.
+First, get a freshly installed server with **Debian Stretch** as operating system.
 
 Then, as root, update your system, install prerequisites,
 and get the Puppet environment:
@@ -63,7 +62,6 @@ environmentpath = /etc/puppet/environments
 As root, you can setup Puppet agent to run manually:
 
 ```bash
-kill -TERM `cat /var/run/puppet/agent.pid`
 puppet agent --enable
 systemctl disable puppet
 ```
