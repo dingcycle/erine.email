@@ -163,13 +163,13 @@ def getReplyAddress(fromAddress, toAddress, isAReply):
 def saveReplyAddress(mailAddress, disposableMailAddress, foreignAddress):
   execQuery("INSERT IGNORE INTO `replyAddress` (`mailAddress`, `disposableMailAddress`, `foreignAddress`) VALUES ('" + mailAddress + "', '" + disposableMailAddress + "', '" + foreignAddress + "');")
 
-def loopmsg(messageId, disposableMailAddress, subject, finalRecipient, finalMailFrom):
+def loopmsg(messageId, disposableMailAddress, subject, finalRecipient, originalFromAddress):
   logging.info("Message-ID " + messageId + " already processed")
-  execQuery("INSERT INTO `message` (`messageId`, `disposableMailAddress`, `subject`, `from`, `rcptTo`, `status`) VALUES ('" + messageId + "', '" + disposableMailAddress + "', '" + subject + "', '" + finalMailFrom + "', '" + finalRecipient + "', 'looped');")
+  execQuery("INSERT INTO `message` (`messageId`, `disposableMailAddress`, `subject`, `from`, `rcptTo`, `status`) VALUES ('" + messageId + "', '" + disposableMailAddress + "', '" + subject + "', '" + originalFromAddress + "', '" + finalRecipient + "', 'looped');")
 
-def sendmsg(messageId, disposableMailAddress, subject, finalRecipient, finalMail, finalMailFrom, isAReply):
+def sendmsg(messageId, disposableMailAddress, subject, finalRecipient, finalMail, finalMailFrom, isAReply, originalFromAddress):
   logging.info("Sending Message-ID " + messageId)
-  execQuery("INSERT INTO `message` (`messageId`, `disposableMailAddress`, `subject`, `from`, `rcptTo`, `status`) VALUES ('" + messageId + "', '" + disposableMailAddress + "', '" + subject + "', '" + finalMailFrom + "', '" + finalRecipient + "', '" + ("sentAs" if isAReply else "sent") + "');")
+  execQuery("INSERT INTO `message` (`messageId`, `disposableMailAddress`, `subject`, `from`, `rcptTo`, `status`) VALUES ('" + messageId + "', '" + disposableMailAddress + "', '" + subject + "', '" + originalFromAddress + "', '" + finalRecipient + "', '" + ("sentAs" if isAReply else "sent") + "');")
   try:
     p = subprocess.Popen(['/usr/sbin/sendmail', '-G', '-i', '-f', finalMailFrom, '--', '<' + finalRecipient + '>'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
     l = p.communicate(input=finalMail)
@@ -178,9 +178,9 @@ def sendmsg(messageId, disposableMailAddress, subject, finalRecipient, finalMail
     logging.critical("Deferring email")
     sys.exit(EX_TEMPFAIL)
 
-def dropmsg(messageId, disposableMailAddress, subject, finalRecipient, finalMailFrom):
+def dropmsg(messageId, disposableMailAddress, subject, finalRecipient, originalFromAddress):
   logging.info("Dropping Message-ID " + messageId)
-  execQuery("INSERT INTO `message` (`messageId`, `disposableMailAddress`, `subject`, `from`, `rcptTo`, `status`) VALUES ('" + messageId + "', '" + disposableMailAddress + "', '" + subject + "', '" + finalMailFrom + "', '" + finalRecipient + "', 'dropped');")
+  execQuery("INSERT INTO `message` (`messageId`, `disposableMailAddress`, `subject`, `from`, `rcptTo`, `status`) VALUES ('" + messageId + "', '" + disposableMailAddress + "', '" + subject + "', '" + originalFromAddress + "', '" + finalRecipient + "', 'dropped');")
 
 # Retrieve user email and ID
 # username column has a UNIQUE constraint, so using fetchone() is enough
@@ -339,14 +339,14 @@ def main():
   # Exit if message already processed
   execQuery("SELECT `id` FROM `message` WHERE `messageId` = '" + messageId + "';")
   if dbCursor.fetchone():
-    loopmsg(messageId, subject, finalRecipient, getAddress(finalMailFrom))
+    loopmsg(messageId, subject, finalRecipient, originalFromAddress)
     dbCursor.close()
     logging.critical("Bouncing email")
     sys.exit(EX_UNAVAILABLE)
 
   if isAReply:
     execQuery("UPDATE `disposableMailAddress` SET `sentAs` = `sentAs` + 1 WHERE `mailAddress` = '" + getAddress(finalMailFrom) + "';")
-    sendmsg(messageId, getAddress(finalMailFrom), subject, finalRecipient, finalMail, getAddress(finalMailFrom), isAReply)
+    sendmsg(messageId, getAddress(finalMailFrom), subject, finalRecipient, finalMail, getAddress(finalMailFrom), isAReply, originalFromAddress)
   else:
 
     # Create or update disposable mail address in DB. Call sendmsg() or dropmsg().
@@ -362,7 +362,7 @@ def main():
         saveReplyAddress(getAddress(finalMailReplyTo), recipient, originalReplyToAddress)
       execQuery("SELECT `mailAddress` FROM `disposableMailAddress` WHERE `mailAddress` = '" + recipient + "';")
       disposableMailAddress = dbCursor.fetchone()
-      sendmsg(messageId, disposableMailAddress[0], subject, finalRecipient, finalMail, getAddress(finalMailFrom), isAReply)
+      sendmsg(messageId, disposableMailAddress[0], subject, finalRecipient, finalMail, getAddress(finalMailFrom), isAReply, originalFromAddress)
 
     else:
       if disposableMailAddress[0] == 1:
@@ -372,13 +372,13 @@ def main():
         saveReplyAddress(getAddress(finalMailFrom), recipient, originalFromAddress)
         if finalMailReplyTo:
           saveReplyAddress(getAddress(finalMailReplyTo), recipient, originalReplyToAddress)
-        sendmsg(messageId, disposableMailAddress[1], subject, finalRecipient, finalMail, getAddress(finalMailFrom), isAReply)
+        sendmsg(messageId, disposableMailAddress[1], subject, finalRecipient, finalMail, getAddress(finalMailFrom), isAReply, originalFromAddress)
 
       else:
 
         # The disposable mail address is disabled
         execQuery("UPDATE `disposableMailAddress` SET `dropped` = `dropped` + 1 WHERE `mailAddress` = '" + recipient + "';")
-        dropmsg(messageId, disposableMailAddress[1], subject, finalRecipient, getAddress(finalMailFrom))
+        dropmsg(messageId, disposableMailAddress[1], subject, finalRecipient, originalFromAddress)
 
   # Terminate transaction and close connection to spameater database
   execQuery("COMMIT;")
