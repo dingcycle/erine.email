@@ -41,6 +41,7 @@ CREATE TABLE `disposableMailAddress` (
   `sent` int(10) unsigned NOT NULL DEFAULT '0',
   `dropped` int(10) unsigned NOT NULL DEFAULT '0',
   `sentAs` int(10) unsigned NOT NULL DEFAULT '0',
+  `comment` varchar(140) DEFAULT NULL,
   PRIMARY KEY (`mailAddress`),
   KEY `userID` (`userID`),
   CONSTRAINT `disposableMailAddress_ibfk_1` FOREIGN KEY (`userID`) REFERENCES `user` (`ID`)
