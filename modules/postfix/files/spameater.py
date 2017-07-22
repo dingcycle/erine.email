@@ -96,7 +96,7 @@ def ee2f_getLabel(fullAddress):
     return ""
   return name
 
-# erine.email user is answering to a foreign address (ee2f as Erine.Email To Foreign)
+# erine.email user is answering a foreign address (ee2f as Erine.Email To Foreign)
 # Retrieve reply email address from replyAddress table
 # Bounce email if fromAddress is not allowed to send an email as the associated
 # disposable mail address
