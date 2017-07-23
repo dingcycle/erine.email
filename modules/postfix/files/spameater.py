@@ -72,7 +72,7 @@ def getLabel(fullAddress):
   r = re.match("'(.+)'[\s]*<" + emailAddressRegex + ">$", fullAddress)
   if r:
     return r.group(1)
-  r = re.match("(.+)[\s]*<" + emailAddressRegex + ">$", fullAddress)
+  r = re.match("(.*\S)[\s]*<" + emailAddressRegex + ">$", fullAddress)
   if r:
     return r.group(1)
   r = re.match("<" + emailAddressRegex + ">$", fullAddress)
