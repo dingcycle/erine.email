@@ -27,16 +27,64 @@ import re
 import string
 import subprocess
 import sys
-import time
 import traceback
 
 # Exit codes from <sysexits.h>
 EX_TEMPFAIL = 75    # Postfix places the message in the deferred mail queue and tries again later
 EX_UNAVAILABLE = 69 # The mail is bounced by terminating with exit status 69
 
+# What kind of email is being parsed
+# Refers to scenario explained below
+CLASSIC = "CLASSIC"
+RESERVED = "RESERVED"
+REPLY = "REPLY"
+FIRST_SHOT = "FIRST_SHOT"
+
 # Regular expression that email addresses must match
 # You HAVE to prefix this regex by ^ and suffix it by $ to match an email address exactly
 emailAddressRegex = '[_a-z0-9-\+]+(\.[_a-z0-9-\+]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,})'
+
+"""
+                 +----------------+
+                 |                |
+                 |    SpamEater   |
+      +--------> |    engine      +-------+
+      |          |                |       |
+      |          +----------------+       |
+      |                                   |
+      |                                   |
+      |                                   |
+      +                                   v
+original mail                     rewritten mail, by spameater
+  (incoming)                         (outgoing)
+
+
+List of possible scenari for the spameater script:
++-------------------+------------------------------------------------------+-----------------------------------------+
+| Name              | Scenario 1: "classic"                                | Scenario 2: "reserved"                  |
++-------------------+------------------------------------------------------+-----------------------------------------+
+| Description       | a foreign address writes to                          | a foreign address writes to a           |
+|                   | a spameater _classic_ user (e.g. joe)                | a spameater _reserved_ user (e.g. john) |
+| original "From:"  | <billing@company-brand-55.com>                       | <billing@company-brand-55.com>          |
+| original "To:"    | Joe <brand55.joe@erine.email>                        | John <john@erine.email>                 |
+| spameater "From:" | a-4r4nd0m-57r1n6@erine.email                         | a-4r4nd0m-57r1n6@erine.email            |
+| spameater "To:"   | joe@example.org                                      | john@example.org                        |
++-------------------+------------------------------------------------------+-----------------------------------------+
+
++-------------------+------------------------------------------------------+---------------------------------------------------------+
+| Name              | Scenario 3: "reply"                                  | Scenario 4: "first_shot"                                |
++-------------------+------------------------------------------------------+---------------------------------------------------------+
+| Description       | a spameater user (e.g. jack)                         | a spameater user (judy) wants to initiate a contact     |
+|                   | answers an email originally sent from a foreign user | to a foreign address (billing@company-brand-55.com)     |
+| original "From:"  | <jack@example.org>                                   | <judy@example.org>                                      |
+| original "To:"    | Billing - billing@company-brand-55.com               | <brand55.judy.billing_company-brand-55.com@erine.email> |
+|                   | <4n07h3r-r4nd0m-57r1n6@erine.email>                  |                                                         |
+| spameater "From:" | brand55.jack@erine.email                             | brand55.judy@erine.email                                |
+| spameater "To:"   | joe@example.org                                      | billing@company-brand-55.com                            |
++-------------------+------------------------------------------------------+---------------------------------------------------------+
+
+For scenario 4, note that the '@' from the original recipient is substituted by an underscore (_).
+"""
 
 class BounceException(Exception):
      pass
@@ -153,10 +201,12 @@ def f2ee_getReplyAddress(fromAddress, toAddress):
   return replyAddress
 
 # Forge or retrieve reply email address
-def getReplyAddress(fromAddress, toAddress, isAReply):
-  if isAReply:
+def getReplyAddress(fromAddress, toAddress, mailType):
+  logging.debug("I will get a reply address from {} to {} (mailType = {})".format(fromAddress, toAddress, mailType))
+  if mailType == REPLY:
     return ee2f_getReplyAddress(fromAddress, toAddress)
-  return f2ee_getReplyAddress(fromAddress, toAddress)
+  else:
+    return f2ee_getReplyAddress(fromAddress, toAddress)
 
 def saveReplyAddress(mailAddress, disposableMailAddress, foreignAddress):
   execQuery("INSERT IGNORE INTO `replyAddress` (`mailAddress`, `disposableMailAddress`, `foreignAddress`) VALUES (%s, %s, %s)", mailAddress, disposableMailAddress, foreignAddress)
@@ -165,9 +215,19 @@ def loopmsg(messageId, disposableMailAddress, subject, finalRecipient, originalF
   logging.info("Message-ID " + messageId + " already processed")
   execQuery("INSERT INTO `message` (`messageId`, `disposableMailAddress`, `subject`, `from`, `rcptTo`, `status`) VALUES (%s, %s, %s, %s, %s, %s)", messageId, disposableMailAddress, subject, originalFromAddress, finalRecipient, 'looped')
 
-def sendmsg(messageId, disposableMailAddress, subject, finalRecipient, finalMail, finalMailFrom, isAReply, originalFromAddress):
-  logging.info("Sending Message-ID " + messageId)
-  execQuery("INSERT INTO `message` (`messageId`, `disposableMailAddress`, `subject`, `from`, `rcptTo`, `status`) VALUES (%s, %s, %s, %s, %s, %s)", messageId, disposableMailAddress, subject, originalFromAddress, finalRecipient, "sentAs" if isAReply else "sent")
+def sendmsg(messageId, disposableMailAddress, subject, finalRecipient, finalMail, finalMailFrom, mailType, originalFromAddress):
+  logging.info("[{}] Sending Message-ID {} ".format(mailType,  messageId))
+
+  if mailType in [REPLY, FIRST_SHOT]:
+    sendingType = 'sentAs'
+  else:
+    sendingType = 'sent'
+
+  execQuery(
+      "INSERT INTO `message` (`messageId`, `disposableMailAddress`, `subject`, `from`, `rcptTo`, `status`) VALUES (%s, %s, %s, %s, %s, %s)",
+      messageId, disposableMailAddress, subject, originalFromAddress, finalRecipient, sendingType
+  )
+
   try:
     p = subprocess.Popen(['/usr/sbin/sendmail', '-G', '-i', '-f', finalMailFrom, '--', '<' + finalRecipient + '>'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
     l = p.communicate(input=finalMail)
@@ -257,19 +317,35 @@ def main():
   except Exception as e:
     raise DeferException("Exception while connecting to DB: " + str(e))
 
-  # Set finalRecipient, userID and isAReply from recipient, or exit if incorrect
-  r = re.match("([^@]+)\.([^@\.]+)@([^@]+)$", recipient)
-  isAReply = False # Default: a foreign address is writing to an erine.email user
-  if r:
-    finalRecipient = fetchUser(r.group(2), 0)
+  # Set finalRecipient, userID and mailType from recipient, or exit if incorrect
+  mailType = CLASSIC # Default: a foreign address is writing to an erine.email user
+  userID = None
+  finalRecipient = None
+  finalSender = None
+  classicMatch = re.match("([^@\.]+)\.([^@\.]+)@([^@]+)$", recipient)
+  reservedMatch = re.match("([^@\.]+)@([^@]+)$", recipient)
+  firstShotMatch = re.match("(?P<disposableTarget>[^@\.]+)\.(?P<user>[^@\.]+)\.(?P<targetLocal>[^@]+)_(?P<targetDomain>[^@]+)@(?P<ee_domain>[^@]+)$", recipient)
+
+  if classicMatch:
+    # recipient looks like a classic spameater address: <something.user@domain>
+
+    logging.debug("Recipient looks like a classic spameater address: {}".format(recipient))
+    mailType = CLASSIC
+
+    finalRecipient = fetchUser(classicMatch.group(2), 0)
     if not finalRecipient:
-      if fetchUser(r.group(2), 1):
-        logging.critical("Incorrect user usage: " + r.group(2) + " exists, but as a reserved user")
+      if fetchUser(classicMatch.group(2), 1):
+        errorMsg = "Incorrect user usage: " + classicMatch.group(2) + " exists, but as a reserved user"
       else:
-        logging.critical("Incorrect user name: " + r.group(2))
-      logging.critical("Bouncing email")
-      sys.exit(EX_UNAVAILABLE)
-  else:
+        errorMsg = "Incorrect user name: " + classicMatch.group(2)
+      raise BounceException(errorMsg)
+
+  elif reservedMatch:
+    # recipient looks like a reserved user address <user@domain> or a reply address
+
+    logging.debug("Recipient looks like a reserved user or reply address: {}".format(recipient))
+    mailType = RESERVED
+
     r = re.match("([^@\.]+)@([^@]+)$", recipient)
     if r:
       finalRecipient = fetchUser(r.group(1), 1)
@@ -277,35 +353,74 @@ def main():
         if fetchUser(r.group(1), 0):
           logging.critical("Incorrect user usage: " + r.group(1) + " exists, but as a not reserved user")
         else:
+          ## a reserved user email has the same format than a reply address
           finalRecipient = getToFromReplyAddresses(recipient)
-          isAReply = True # An erine.email user is answering to a foreign address
+          mailType = REPLY # An erine.email user is answering to a foreign address
     else:
       raise BounceException('Incorrect recipient: {}'.format(recipient))
-  if not isAReply:
+
+  elif firstShotMatch:
+    # recipient looks like a first shot relay address: <something.user.somecompany_somedomain.com@domain>
+
+    logging.debug("Recipient looks like a first shot relay address: {}".format(recipient))
+    mailType = FIRST_SHOT
+
+    firstShotDict = firstShotMatch.groupdict()
+    user = firstShotDict['user']
+    userInfo = fetchUser(user, 0)
+
+    if not userInfo:
+      if fetchUser(user, 1):
+        raise BounceException("Incorrect user usage: " + user + " exists, but as a reserved user")
+      else:
+        raise BounceException("Unknown user name: " + user)
+    else:
+      userMail,userID = userInfo[0],userInfo[1]
+      if (sender != userMail):
+        raise BounceException("Incorrect sender email: " + user + "'s emails cannot be forged by " + sender)
+
+    finalRecipient = "{m[targetLocal]}@{m[targetDomain]}".format(m=firstShotDict)
+    finalSender = '{m[disposableTarget]}.{m[user]}@{m[ee_domain]}'.format(m=firstShotDict)
+    logging.debug("I'll send mail as {}".format(finalSender))
+
+  else:
+    raise BounceException('Incorrect recipient: {}'.format(recipient))
+
+  if not userID and mailType != REPLY:
     userID = finalRecipient[1]
     finalRecipient = finalRecipient[0]
 
   # Forge finalMail, messageId and subject
-  finalMail = ""
   messageId = ""
   subject = ""
+
+  # Parse email headers
+  # That's also where the rewriting happens
+
+  finalMail = ""
   originalFromAddress = False
   finalMailFrom = False
   originalReplyToAddress = False
   finalMailReplyTo = False
+
   for line in originalMail:
+    # FIXME should we really parse the whole body as well?
     r = re.match("From:\s(.+)$", line, re.IGNORECASE)
     if r:
       if not re.match(".*<" + sender + ">$", r.group(1), re.IGNORECASE) and sender.lower() != r.group(1).lower():
         logging.warning("From (" + r.group(1) + ") is different than sender (" + sender + ")")
+
       originalFromAddress = getAddress(r.group(1))
-      finalMailFrom = getReplyAddress(r.group(1), recipient, isAReply)
+      if finalSender:
+        finalMailFrom = finalSender
+      else:
+        finalMailFrom = getReplyAddress(r.group(1), recipient, mailType)
       finalMail += "From: " + finalMailFrom + "\n"
       continue
     r = re.match("Reply-to:\s(.+)$", line, re.IGNORECASE)
     if r:
       originalReplyToAddress = getAddress(r.group(1))
-      finalMailReplyTo = getReplyAddress(r.group(1), recipient, isAReply)
+      finalMailReplyTo = getReplyAddress(r.group(1), recipient, mailType)
       finalMail += "Reply-to: " + finalMailReplyTo + "\n"
       continue
     r = re.match("(\s+for\s+)(.+);(.+)$", line, re.IGNORECASE)
@@ -315,13 +430,19 @@ def main():
       finalMail += r.group(1) + "<" + finalRecipient + ">" + r.group(3) + "\n"
       continue
     r = re.match("To:\s(.+)$", line, re.IGNORECASE)
-    if r and isAReply:
-      finalMail += "To: "
-      label = ee2f_getLabel(r.group(1))
-      if label:
-        finalMail += label + " "
-      finalMail += "<" + finalRecipient + ">\n"
-      continue
+    if r:
+      if mailType == REPLY:
+        finalMail += "To: "
+        label = ee2f_getLabel(r.group(1))
+        if label:
+          finalMail += label + " "
+        finalMail += "<" + finalRecipient + ">\n"
+        continue
+      elif mailType == FIRST_SHOT:
+        ## rewrite the recipient
+        finalMail += "To: "
+        finalMail += "<" + finalRecipient + ">\n"
+        continue
     r = re.match("Message-ID:\s(.+)$", line, re.IGNORECASE)
     if r:
       messageId = r.group(1)
@@ -330,15 +451,13 @@ def main():
       subject = r.group(1)
     finalMail += line
   if not originalFromAddress:
-    logging.warning("Can not retrieve From information. Using sender (" + sender + ")")
+    logging.warning("Cannot retrieve From information. Using sender (" + sender + ")")
     originalFromAddress = sender
   if not finalMailFrom:
-    logging.warning("Can not retrieve From information. Using sender (" + sender + ")")
-    finalMailFrom = getReplyAddress(sender, recipient, isAReply)
+    logging.warning("Cannot retrieve From information. Using sender (" + sender + ")")
+    finalMailFrom = getReplyAddress(sender, recipient, mailType)
   if not messageId:
-    logging.critical("Message-ID not found")
-    logging.critical("Bouncing email")
-    sys.exit(EX_UNAVAILABLE)
+    raise BounceException("Message-ID not found")
   if not subject:
     logging.warning("Subject not found")
 
@@ -349,16 +468,17 @@ def main():
     dbCursor.close()
     raise BounceException("Bouncing email")
 
-  if isAReply:
-    execQuery("UPDATE `disposableMailAddress` SET `sentAs` = `sentAs` + 1 WHERE `mailAddress` = %s", getAddress(finalMailFrom))
-    sendmsg(messageId, getAddress(finalMailFrom), subject, finalRecipient, finalMail, getAddress(finalMailFrom), isAReply, originalFromAddress)
-  else:
 
+  if mailType == REPLY:
+    execQuery("UPDATE `disposableMailAddress` SET `sentAs` = `sentAs` + 1 WHERE `mailAddress` = %s", getAddress(finalMailFrom))
+    sendmsg(messageId, getAddress(finalMailFrom), subject, finalRecipient, finalMail, getAddress(finalMailFrom), mailType, originalFromAddress)
+  else:
     # Create or update disposable mail address in DB. Call sendmsg() or dropmsg().
     # mailAddress column has a UNIQUE constraint. So using fetchone() is enough.
     execQuery("SELECT `enabled`, `mailAddress` FROM `disposableMailAddress` WHERE `mailAddress` = %s", recipient)
     disposableMailAddress = dbCursor.fetchone()
     if not disposableMailAddress:
+      logging.debug('The disposable address is used for the first time')
 
       # The disposable mail address is used for the first time
       execQuery("INSERT INTO `disposableMailAddress` (`mailAddress`, `userID`, `sent`) VALUES (%s, %s, %s)", recipient, str(userID), 1);
@@ -367,20 +487,19 @@ def main():
         saveReplyAddress(getAddress(finalMailReplyTo), recipient, originalReplyToAddress)
       execQuery("SELECT `mailAddress` FROM `disposableMailAddress` WHERE `mailAddress` = %s", recipient)
       disposableMailAddress = dbCursor.fetchone()
-      sendmsg(messageId, disposableMailAddress[0], subject, finalRecipient, finalMail, getAddress(finalMailFrom), isAReply, originalFromAddress)
+      sendmsg(messageId, disposableMailAddress[0], subject, finalRecipient, finalMail, getAddress(finalMailFrom), mailType, originalFromAddress)
 
     else:
+      # The disposable address has already been created
       if disposableMailAddress[0] == 1:
-
         # The disposable mail address is enabled
         execQuery("UPDATE `disposableMailAddress` SET `sent` = `sent` + 1 WHERE `mailAddress` = %s", recipient)
         saveReplyAddress(getAddress(finalMailFrom), recipient, originalFromAddress)
         if finalMailReplyTo:
           saveReplyAddress(getAddress(finalMailReplyTo), recipient, originalReplyToAddress)
-        sendmsg(messageId, disposableMailAddress[1], subject, finalRecipient, finalMail, getAddress(finalMailFrom), isAReply, originalFromAddress)
+        sendmsg(messageId, disposableMailAddress[1], subject, finalRecipient, finalMail, getAddress(finalMailFrom), mailType, originalFromAddress)
 
       else:
-
         # The disposable mail address is disabled
         execQuery("UPDATE `disposableMailAddress` SET `dropped` = `dropped` + 1 WHERE `mailAddress` = %s", recipient)
         dropmsg(messageId, disposableMailAddress[1], subject, finalRecipient, originalFromAddress)

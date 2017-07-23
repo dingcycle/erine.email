@@ -2,7 +2,7 @@
 
 *erine.email* is a strong shield for your emails against spam. Based on
 unlimited disposable email addresses, *erine.email* is completely free,
-open-source, and simple. Really. [Check it out!](https://erine.email).
+open-source, and simple. Really. [Check it out!](https://erine.email)
 
 This repo is the piece of software that you need to host
 *erine.email* on your own server.
