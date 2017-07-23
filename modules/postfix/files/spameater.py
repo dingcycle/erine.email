@@ -204,7 +204,7 @@ def main():
 
   # Be sure /var/log/spameater/spameater.log exists and is accessible to spameater user
   # On exception raising, do not use logging to display the error as something's wrong with it
-  logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=logging.INFO, filename="/var/log/spameater/spameater.log")
+  logging.basicConfig(format='%(asctime)s %(levelname)8s[%(lineno)4d] %(message)s', level=logging.INFO, filename="/var/log/spameater/spameater.log")
 
   # Postfix feeds this script using a pipe, what means the e-mail is sent on stdin
   # If the script had been launched manually, do not use logging to display the error
