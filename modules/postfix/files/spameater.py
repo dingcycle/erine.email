@@ -177,6 +177,10 @@ def sendmsg(messageId, disposableMailAddress, subject, finalRecipient, finalMail
     logging.critical("Exception while launching sendmail: " + str(e))
     logging.critical("Deferring email")
     sys.exit(EX_TEMPFAIL)
+  if p.returncode != 0:
+    logging.critical("Sendmail returned a " + str(p.returncode) + " return code")
+    logging.critical("Deferring email")
+    sys.exit(EX_TEMPFAIL)
 
 def dropmsg(messageId, disposableMailAddress, subject, finalRecipient, originalFromAddress):
   logging.info("Dropping Message-ID " + messageId)
