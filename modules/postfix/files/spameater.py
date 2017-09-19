@@ -27,6 +27,7 @@ import string
 import subprocess
 import sys
 import time
+import traceback
 
 # Exit codes from <sysexits.h>
 EX_TEMPFAIL = 75    # Postfix places the message in the deferred mail queue and tries again later
@@ -36,16 +37,19 @@ EX_UNAVAILABLE = 69 # The mail is bounced by terminating with exit status 69
 # You HAVE to prefix this regex by ^ and suffix it by $ to match an email address exactly
 emailAddressRegex = '[_a-z0-9-]+(\.[_a-z0-9-]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,})'
 
+class BounceException(Exception):
+     pass
+
+class DeferException(Exception):
+     pass
+
 # Execute a SQL query
 # Defer email on problem executing the query
 def execQuery(query):
   try:
     dbCursor.execute(query)
   except Exception as e:
-    logging.critical("Exception while executing the following query: " + query)
-    logging.critical(str(e))
-    logging.critical("Deferring email")
-    sys.exit(EX_TEMPFAIL)
+    raise DeferException("Exception while executing the following query: {}\n{}".format(query, str(e)))
 
 # Extract email address from a complete address
 # Bounce email on invalid fullAddress
@@ -56,9 +60,7 @@ def getAddress(fullAddress):
   r = re.match("(" + emailAddressRegex + ")", fullAddress)
   if r:
     return r.group(1)
-  logging.critical("Invalid email address: \"" + fullAddress + "\"")
-  logging.critical("Bouncing email")
-  sys.exit(EX_UNAVAILABLE)
+  raise BounceException('Invalid email address: "{}"'.format(fullAddress))
 
 # Extract email label from a complete address
 # Bounce email on invalid fullAddress
@@ -78,9 +80,8 @@ def getLabel(fullAddress):
   r = re.match(emailAddressRegex + "$", fullAddress)
   if r:
     return ""
-  logging.critical("Invalid email address: \"" + fullAddress + "\"")
-  logging.critical("Bouncing email")
-  sys.exit(EX_UNAVAILABLE)
+  raise DeferException('Invalid email address: "{}"'.format(fullAddress))
+
 
 # erine.email user is answering to a foreign address (ee2f as Erine.Email To Foreign)
 # Extract xxx email label from a complete address like
@@ -96,7 +97,7 @@ def ee2f_getLabel(fullAddress):
     return ""
   return name
 
-# erine.email user is answering to a foreign address (ee2f as Erine.Email To Foreign)
+# erine.email user is answering a foreign address (ee2f as Erine.Email To Foreign)
 # Retrieve reply email address from replyAddress table
 # Bounce email if fromAddress is not allowed to send an email as the associated
 # disposable mail address
@@ -110,18 +111,16 @@ def ee2f_getReplyAddress(fromAddress, toAddress):
       logging.critical("Can not check if " + getAddress(fromAddress) + " is allowed to send an email as " + replyAddress[0] + ". Assuming yes.")
     else:
       if allowedEmail[0] != getAddress(fromAddress):
-        logging.critical("\"" + getAddress(fromAddress) + "\" is not allowed to send an email as \"" + replyAddress[0] + "\"")
-        logging.critical("Bouncing email")
-        sys.exit(EX_UNAVAILABLE)
+        raise BounceException('"{}" is not allowed to send an email as "{}"').format(
+          getAddress(fromAddress), replyAddress[0]
+        )
     label = getLabel(fromAddress)
     if label:
       return label + " <" + replyAddress[0] + ">"
     else:
       return replyAddress[0]
   else:
-    logging.critical("Invalid email address: \"" + toAddress + "\"")
-    logging.critical("Bouncing email")
-    sys.exit(EX_UNAVAILABLE)
+    raise BounceException('Invalid email address: "{}"'.format(toAddress))
 
 # A foreign address is writing to an erine.email user (f2ee as Foreign To Erine.Email)
 # Forge or retrieve reply email address
@@ -142,9 +141,7 @@ def f2ee_getReplyAddress(fromAddress, toAddress):
     # Add the destination address domain
     r = re.match(".+(@[^@]+)$", toAddress)
     if not r:
-      logging.critical("Invalid email address: \"" + toAddress + "\"")
-      logging.critical("Bouncing email")
-      sys.exit(EX_UNAVAILABLE)
+      raise BounceException('Invalid email address: "{}"'.format(toAddress))
     replyAddress += r.group(1)
 
   # Add the label and return the result
@@ -174,13 +171,9 @@ def sendmsg(messageId, disposableMailAddress, subject, finalRecipient, finalMail
     p = subprocess.Popen(['/usr/sbin/sendmail', '-G', '-i', '-f', finalMailFrom, '--', '<' + finalRecipient + '>'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
     l = p.communicate(input=finalMail)
   except Exception as e:
-    logging.critical("Exception while launching sendmail: " + str(e))
-    logging.critical("Deferring email")
-    sys.exit(EX_TEMPFAIL)
+    raise DeferException("Exception while launching sendmail: " + str(e))
   if p.returncode != 0:
-    logging.critical("Sendmail returned a " + str(p.returncode) + " return code")
-    logging.critical("Deferring email")
-    sys.exit(EX_TEMPFAIL)
+    raise DeferException("Sendmail returned the following return code: " + str(p.returncode))
 
 def dropmsg(messageId, disposableMailAddress, subject, finalRecipient, originalFromAddress):
   logging.info("Dropping Message-ID " + messageId)
@@ -204,9 +197,7 @@ def getToFromReplyAddresses(email):
     else:
       return toAddress[0]
   else:
-    logging.critical("Invalid email address: \"" + email + "\"")
-    logging.critical("Bouncing email")
-    sys.exit(EX_UNAVAILABLE)
+    raise BounceException('Not a reply address or reserved user address: "{}"'.format(email))
 
 def main():
 
@@ -249,9 +240,7 @@ def main():
     dbCursor = connector.cursor()
     execQuery("BEGIN;")
   except Exception as e:
-    logging.critical(str(e))
-    logging.critical("Deferring email")
-    sys.exit(EX_TEMPFAIL)
+    raise DeferException("Exception while connecting to DB: " + str(e))
 
   # Set finalRecipient, userID and isAReply from recipient, or exit if incorrect
   r = re.match("([^@]+)\.([^@\.]+)@([^@]+)$", recipient)
@@ -276,9 +265,7 @@ def main():
           finalRecipient = getToFromReplyAddresses(recipient)
           isAReply = True # An erine.email user is answering to a foreign address
     else:
-      logging.critical("Incorrect recipient: " + recipient)
-      logging.critical("Bouncing email")
-      sys.exit(EX_UNAVAILABLE)
+      raise BounceException('Incorrect recipient: {}'.format(recipient))
   if not isAReply:
     userID = finalRecipient[1]
     finalRecipient = finalRecipient[0]
@@ -345,8 +332,7 @@ def main():
   if dbCursor.fetchone():
     loopmsg(messageId, subject, finalRecipient, originalFromAddress)
     dbCursor.close()
-    logging.critical("Bouncing email")
-    sys.exit(EX_UNAVAILABLE)
+    raise BounceException("Bouncing email")
 
   if isAReply:
     execQuery("UPDATE `disposableMailAddress` SET `sentAs` = `sentAs` + 1 WHERE `mailAddress` = '" + getAddress(finalMailFrom) + "';")
@@ -391,7 +377,19 @@ def main():
 if __name__ == '__main__':
   try:
     main()
+  except BounceException as e:
+    info = sys.exc_info()
+    extract = traceback.extract_tb(info[2])[-1][1:3]
+    (lineno, function) = extract
+    logging.critical("Bouncing email (reason = '{}', from {}, line {})".format(str(e.message), function, lineno))
+    sys.exit(EX_UNAVAILABLE)
+  except DeferException as e:
+    info = sys.exc_info()
+    extract = traceback.extract_tb(info[2])[-1][1:3]
+    (lineno, function) = extract
+    logging.critical("Deferring email (reason = '{}', from {}, line {})".format(str(e.message), function, lineno))
+    sys.exit(EX_TEMPFAIL)
   except Exception as e:
-    logging.critical(str(e))
+    logging.exception(e)
     logging.critical("Deferring email")
     sys.exit(EX_TEMPFAIL)
