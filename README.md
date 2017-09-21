@@ -139,7 +139,7 @@ For now, simply run something like the following (replace the VALUES with
 what fits you best):
 
 ```bash
-mysql -u root -p$( cat /root/.mariadb.pwd ) spameater -e "INSERT INTO Users (Username,Email) VALUES('john','mysecretemail@example.com');"
+mysql -u root -p$( cat /root/.mariadb.pwd ) spameater -e "INSERT INTO user (username, mailAddress) VALUES ('john', 'mysecretemail@example.com');"
 ```
 
 ## Test that it works!
