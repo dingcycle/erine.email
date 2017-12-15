@@ -19,6 +19,7 @@
 
 import MySQLdb
 
+import configparser
 import logging
 import os
 import random
@@ -230,12 +231,26 @@ def main():
   sender = sys.argv[1].lower()
   recipient = sys.argv[2].lower()
 
-  # Connect to spameater database and begin a transaction
+  # Retrieve DBMS configuration
   try:
+    config = configparser.RawConfigParser()
+    config.read_file(open('/etc/erine-email.conf'))
+    host = config.get('dbms', 'host', fallback='localhost')
+    port = int(config.get('dbms', 'port', fallback=3306))
+    database = config.get('dbms', 'database', fallback='spameater')
+  except Exception as e:
+    logging.warning('Problem retrieving DBMS configuration. Falling back to spameater database on localhost:3306.')
+    host = 'localhost'
+    port = 3306
+    database = 'spameater'
+
+  # Connect to the database and begin a transaction
+  try:
+
     f = open('/home/spameater/.mariadb.pwd', 'r')
     password = f.readline().strip()
     f.close()
-    connector = MySQLdb.connect(host = "127.0.0.1", connect_timeout = 2, user = "spameater", passwd=password, db="spameater")
+    connector = MySQLdb.connect(host=host, port=port, connect_timeout=2, user="spameater", passwd=password, db=database)
     global dbCursor
     dbCursor = connector.cursor()
     execQuery("BEGIN;")
@@ -370,7 +385,7 @@ def main():
         execQuery("UPDATE `disposableMailAddress` SET `dropped` = `dropped` + 1 WHERE `mailAddress` = '" + recipient + "';")
         dropmsg(messageId, disposableMailAddress[1], subject, finalRecipient, originalFromAddress)
 
-  # Terminate transaction and close connection to spameater database
+  # Terminate transaction and close connection to the database
   execQuery("COMMIT;")
   dbCursor.close()
 

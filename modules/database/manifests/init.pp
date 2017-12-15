@@ -38,6 +38,7 @@ class database
 
   package { [
     'mariadb-client',
+    'python-configparser',
     'python-mysqldb',
   ]:
     ensure => present,
@@ -73,6 +74,14 @@ class database
       Package['mariadb-server'],
       Package['mariadb-client'],
     ]
+  }
+
+  file { '/etc/erine-email.conf':
+    ensure => present,
+    mode   => '0640',
+    owner  => 'root',
+    group  => 'root',
+    source => 'puppet:///modules/database/erine-email.conf',
   }
 
 }

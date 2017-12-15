@@ -32,9 +32,10 @@ class postfix
     owner   => 'root',
     group   => 'root',
     source  => 'puppet:///modules/postfix/spameater.py',
-    # We need the /usr/lib/postfix/ directory and the Python MySQL library
+    # We need the /usr/lib/postfix/ directory and the Python libraries
     require => [
       Package['postfix'],
+      Package['python-configparser'],
       Package['python-mysqldb'],
     ],
   }
