@@ -78,7 +78,7 @@ class database
 
   file { '/etc/erine-email.conf':
     ensure => present,
-    mode   => '0640',
+    mode   => '0644',
     owner  => 'root',
     group  => 'root',
     source => 'puppet:///modules/database/erine-email.conf',
