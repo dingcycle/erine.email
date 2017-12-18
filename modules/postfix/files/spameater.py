@@ -345,7 +345,7 @@ def main():
   # Exit if message already processed
   execQuery("SELECT `id` FROM `message` WHERE `messageId` = '" + messageId + "';")
   if dbCursor.fetchone():
-    loopmsg(messageId, subject, finalRecipient, originalFromAddress)
+    loopmsg(messageId, finalMailFrom, subject, finalRecipient, originalFromAddress)
     dbCursor.close()
     raise BounceException("Bouncing email")
 
