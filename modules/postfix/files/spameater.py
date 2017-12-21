@@ -46,9 +46,9 @@ class DeferException(Exception):
 
 # Execute a SQL query
 # Defer email on problem executing the query
-def execQuery(query):
+def execQuery(query, *params):
   try:
-    dbCursor.execute(query)
+    dbCursor.execute(query, params)
   except Exception as e:
     raise DeferException("Exception while executing the following query: {}\n{}".format(query, str(e)))
 
@@ -103,10 +103,10 @@ def ee2f_getLabel(fullAddress):
 # Bounce email if fromAddress is not allowed to send an email as the associated
 # disposable mail address
 def ee2f_getReplyAddress(fromAddress, toAddress):
-  execQuery("SELECT `disposableMailAddress` FROM `replyAddress` WHERE `mailAddress` = '" + getAddress(toAddress) + "';")
+  execQuery("SELECT `disposableMailAddress` FROM `replyAddress` WHERE `mailAddress` = %s", getAddress(toAddress))
   replyAddress = dbCursor.fetchone()
   if replyAddress:
-    execQuery("SELECT `user`.`mailAddress` FROM `user` JOIN `disposableMailAddress` ON `user`.`ID` = `disposableMailAddress`.`userID` WHERE `disposableMailAddress`.`mailAddress` = '" + replyAddress[0] + "';")
+    execQuery("SELECT `user`.`mailAddress` FROM `user` JOIN `disposableMailAddress` ON `user`.`ID` = `disposableMailAddress`.`userID` WHERE `disposableMailAddress`.`mailAddress` = %s", replyAddress[0])
     allowedEmail = dbCursor.fetchone()
     if not allowedEmail:
       logging.critical("Can not check if " + getAddress(fromAddress) + " is allowed to send an email as " + replyAddress[0] + ". Assuming yes.")
@@ -127,7 +127,7 @@ def ee2f_getReplyAddress(fromAddress, toAddress):
 # Forge or retrieve reply email address
 # Bounce email on invalid toAddress
 def f2ee_getReplyAddress(fromAddress, toAddress):
-  execQuery("SELECT `mailAddress` FROM `replyAddress` WHERE `disposableMailAddress` = '" + getAddress(toAddress) + "' AND `foreignAddress` = '" + getAddress(fromAddress) + "';")
+  execQuery("SELECT `mailAddress` FROM `replyAddress` WHERE `disposableMailAddress` = %s AND `foreignAddress` = %s", getAddress(toAddress), getAddress(fromAddress))
   replyAddress = dbCursor.fetchone()
   if replyAddress:
 
@@ -159,15 +159,15 @@ def getReplyAddress(fromAddress, toAddress, isAReply):
   return f2ee_getReplyAddress(fromAddress, toAddress)
 
 def saveReplyAddress(mailAddress, disposableMailAddress, foreignAddress):
-  execQuery("INSERT IGNORE INTO `replyAddress` (`mailAddress`, `disposableMailAddress`, `foreignAddress`) VALUES ('" + mailAddress + "', '" + disposableMailAddress + "', '" + foreignAddress + "');")
+  execQuery("INSERT IGNORE INTO `replyAddress` (`mailAddress`, `disposableMailAddress`, `foreignAddress`) VALUES (%s, %s, %s)", mailAddress, disposableMailAddress, foreignAddress)
 
 def loopmsg(messageId, disposableMailAddress, subject, finalRecipient, originalFromAddress):
   logging.info("Message-ID " + messageId + " already processed")
-  execQuery("INSERT INTO `message` (`messageId`, `disposableMailAddress`, `subject`, `from`, `rcptTo`, `status`) VALUES ('" + messageId + "', '" + disposableMailAddress + "', '" + subject + "', '" + originalFromAddress + "', '" + finalRecipient + "', 'looped');")
+  execQuery("INSERT INTO `message` (`messageId`, `disposableMailAddress`, `subject`, `from`, `rcptTo`, `status`) VALUES (%s, %s, %s, %s, %s, %s)", messageId, disposableMailAddress, subject, originalFromAddress, finalRecipient, 'looped')
 
 def sendmsg(messageId, disposableMailAddress, subject, finalRecipient, finalMail, finalMailFrom, isAReply, originalFromAddress):
   logging.info("Sending Message-ID " + messageId)
-  execQuery("INSERT INTO `message` (`messageId`, `disposableMailAddress`, `subject`, `from`, `rcptTo`, `status`) VALUES ('" + messageId + "', '" + disposableMailAddress + "', '" + subject + "', '" + originalFromAddress + "', '" + finalRecipient + "', '" + ("sentAs" if isAReply else "sent") + "');")
+  execQuery("INSERT INTO `message` (`messageId`, `disposableMailAddress`, `subject`, `from`, `rcptTo`, `status`) VALUES (%s, %s, %s, %s, %s, %s)", messageId, disposableMailAddress, subject, originalFromAddress, finalRecipient, "sentAs" if isAReply else "sent")
   try:
     p = subprocess.Popen(['/usr/sbin/sendmail', '-G', '-i', '-f', finalMailFrom, '--', '<' + finalRecipient + '>'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
     l = p.communicate(input=finalMail)
@@ -178,18 +178,18 @@ def sendmsg(messageId, disposableMailAddress, subject, finalRecipient, finalMail
 
 def dropmsg(messageId, disposableMailAddress, subject, finalRecipient, originalFromAddress):
   logging.info("Dropping Message-ID " + messageId)
-  execQuery("INSERT INTO `message` (`messageId`, `disposableMailAddress`, `subject`, `from`, `rcptTo`, `status`) VALUES ('" + messageId + "', '" + disposableMailAddress + "', '" + subject + "', '" + originalFromAddress + "', '" + finalRecipient + "', 'dropped');")
+  execQuery("INSERT INTO `message` (`messageId`, `disposableMailAddress`, `subject`, `from`, `rcptTo`, `status`) VALUES (%s, %s, %s, %s, %s, %s)", messageId, disposableMailAddress, subject, originalFromAddress, finalRecipient, 'dropped')
 
 # Retrieve user email and ID
 # username column has a UNIQUE constraint, so using fetchone() is enough
 def fetchUser(username, reserved):
-  execQuery("SELECT `mailAddress`, `ID` FROM `user` WHERE `username` = '" + username + "' AND `reserved` = " + str(reserved) + ";")
+  execQuery("SELECT `mailAddress`, `ID` FROM `user` WHERE `username` = %s AND `reserved` = %s", username, str(reserved))
   return dbCursor.fetchone()
 
 # Retrieve destination complete address from reply addresses
 # foreignAddress column has a UNIQUE constraint, so using fetchone() is enough
 def getToFromReplyAddresses(email):
-  execQuery("SELECT `foreignAddress` FROM `replyAddress` WHERE `mailAddress` = '" + getAddress(email) + "';")
+  execQuery("SELECT `foreignAddress` FROM `replyAddress` WHERE `mailAddress` = %s", getAddress(email))
   toAddress = dbCursor.fetchone()
   if toAddress:
     label = getLabel(email)
@@ -343,29 +343,29 @@ def main():
     logging.warning("Subject not found")
 
   # Exit if message already processed
-  execQuery("SELECT `id` FROM `message` WHERE `messageId` = '" + messageId + "';")
+  execQuery("SELECT `id` FROM `message` WHERE `messageId` = %s", messageId)
   if dbCursor.fetchone():
     loopmsg(messageId, finalMailFrom, subject, finalRecipient, originalFromAddress)
     dbCursor.close()
     raise BounceException("Bouncing email")
 
   if isAReply:
-    execQuery("UPDATE `disposableMailAddress` SET `sentAs` = `sentAs` + 1 WHERE `mailAddress` = '" + getAddress(finalMailFrom) + "';")
+    execQuery("UPDATE `disposableMailAddress` SET `sentAs` = `sentAs` + 1 WHERE `mailAddress` = %s", getAddress(finalMailFrom))
     sendmsg(messageId, getAddress(finalMailFrom), subject, finalRecipient, finalMail, getAddress(finalMailFrom), isAReply, originalFromAddress)
   else:
 
     # Create or update disposable mail address in DB. Call sendmsg() or dropmsg().
     # mailAddress column has a UNIQUE constraint. So using fetchone() is enough.
-    execQuery("SELECT `enabled`, `mailAddress` FROM `disposableMailAddress` WHERE `mailAddress` = '" + recipient + "';")
+    execQuery("SELECT `enabled`, `mailAddress` FROM `disposableMailAddress` WHERE `mailAddress` = %s", recipient)
     disposableMailAddress = dbCursor.fetchone()
     if not disposableMailAddress:
 
       # The disposable mail address is used for the first time
-      execQuery("INSERT INTO `disposableMailAddress` (`mailAddress`, `userID`, `sent`) VALUES ('" + recipient + "', " + str(userID) + ", 1);")
+      execQuery("INSERT INTO `disposableMailAddress` (`mailAddress`, `userID`, `sent`) VALUES (%s, %s, %s)", recipient, str(userID), 1);
       saveReplyAddress(getAddress(finalMailFrom), recipient, originalFromAddress)
       if finalMailReplyTo:
         saveReplyAddress(getAddress(finalMailReplyTo), recipient, originalReplyToAddress)
-      execQuery("SELECT `mailAddress` FROM `disposableMailAddress` WHERE `mailAddress` = '" + recipient + "';")
+      execQuery("SELECT `mailAddress` FROM `disposableMailAddress` WHERE `mailAddress` = %s", recipient)
       disposableMailAddress = dbCursor.fetchone()
       sendmsg(messageId, disposableMailAddress[0], subject, finalRecipient, finalMail, getAddress(finalMailFrom), isAReply, originalFromAddress)
 
@@ -373,7 +373,7 @@ def main():
       if disposableMailAddress[0] == 1:
 
         # The disposable mail address is enabled
-        execQuery("UPDATE `disposableMailAddress` SET `sent` = `sent` + 1 WHERE `mailAddress` = '" + recipient + "';")
+        execQuery("UPDATE `disposableMailAddress` SET `sent` = `sent` + 1 WHERE `mailAddress` = %s", recipient)
         saveReplyAddress(getAddress(finalMailFrom), recipient, originalFromAddress)
         if finalMailReplyTo:
           saveReplyAddress(getAddress(finalMailReplyTo), recipient, originalReplyToAddress)
@@ -382,7 +382,7 @@ def main():
       else:
 
         # The disposable mail address is disabled
-        execQuery("UPDATE `disposableMailAddress` SET `dropped` = `dropped` + 1 WHERE `mailAddress` = '" + recipient + "';")
+        execQuery("UPDATE `disposableMailAddress` SET `dropped` = `dropped` + 1 WHERE `mailAddress` = %s", recipient)
         dropmsg(messageId, disposableMailAddress[1], subject, finalRecipient, originalFromAddress)
 
   # Terminate transaction and close connection to the database
