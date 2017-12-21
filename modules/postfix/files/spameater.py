@@ -36,7 +36,7 @@ EX_UNAVAILABLE = 69 # The mail is bounced by terminating with exit status 69
 
 # Regular expression that email addresses must match
 # You HAVE to prefix this regex by ^ and suffix it by $ to match an email address exactly
-emailAddressRegex = '[_a-z0-9-]+(\.[_a-z0-9-]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,})'
+emailAddressRegex = '[_a-z0-9-\+]+(\.[_a-z0-9-\+]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,})'
 
 class BounceException(Exception):
      pass
