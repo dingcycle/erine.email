@@ -23,47 +23,27 @@ decides to spam you.
 
 ## Requirements
 
-A [Debian Stretch](https://www.debian.org/releases/stretch/) with no mail server running on it.
+A freshly installed server with [Debian Stretch](https://www.debian.org/releases/stretch/) as operating system.
+
+The `MX` DNS record of your domain name set to this server. Make sure you have a result when you dig your domain:
+
+```bash
+dig +noall +answer  MX myspameater.example.com.
+		59      IN  	MX       	1      smtp.example.com
+```
+
+To prevent most of your emails to be tagged as spam, also set the `SPF` DNS record.
+
 
 ## Installation
 
 Follow the following steps to install a full working *erine.email* system.
 
-First, get a freshly installed server with **Debian Stretch** as operating system.
-
-Then, as root, update your system, install prerequisites,
-and get the Puppet environment:
+Install prerequisites using the erine.email installation script:
 
 ```bash
-apt-get update && apt-get upgrade
-apt-get install git puppetmaster puppet
-cd /etc/puppet/
-test -d environments || mkdir environments
-cd environments
-git clone https://github.com/mdavranche/erine.email.git production
-```
-
-Head to `/etc/puppet/puppet.conf`. In the `[main]` section, tell Puppet agent
-who is your Puppet Master:
-
-```ini
-server=xxx
-```
-
-`xxx` should be your hostname FQDN (that you can get with `hostname -f`).
-
-In the `[master]` section, tell Puppet Master where your environments
-are stored:
-
-```ini
-environmentpath = /etc/puppet/environments
-```
-
-As root, you can setup Puppet agent to run manually:
-
-```bash
-puppet agent --enable
-systemctl disable puppet
+wget https://raw.githubusercontent.com/mdavranche/erine.email/master/install.sh --quiet
+sudo bash install.sh && rm install.sh
 ```
 
 Setup the `iptables` rule to prevent anybody connecting to your Puppet Master.
@@ -75,37 +55,6 @@ iptables -A INPUT -p tcp --dport 8140 -j REJECT
 apt-get install iptables-persistent
 ```
 
-Prepare Hiera storage. Hiera will tell Puppet how to configure *erine.email*
-software, most importantly **which domain name(s)** will have to be plugged
-to your mail server.
-
-Create `/etc/puppet/hiera.yaml` with the following content:
-
-```yaml
-:backends:
-  - yaml
-:logger: puppet
-:hierarchy:
-  - "%{hostname}"
-  - common
-:yaml:
-  :datadir: "/etc/puppetlabs/code/hieradata"
-```
-
-Still as root, create directory ``/etc/puppetlabs/code/hieradata/``:
-
-```bash
-mkdir -p /etc/puppetlabs/code/hieradata/
-```
-
-Create the ``/etc/puppetlabs/code/hieradata/`facter hostname`.yaml``
-file with your domain names. For example, my domain name is `erine.email`:
-
-```yaml
-domainnames:
-  - erine.email
-```
-
 And reboot.
 
 As root, launch Puppet agent:
@@ -115,16 +64,6 @@ puppet agent --test --environment=production
 ```
 
 That's it!
-
-Of course, you'll have to set the `MX` DNS record of your domain name to your
-server. Make sure you have a result when you dig your domain:
-
-```bash
-dig +noall +answer  MX myspameater.example.com.
-		59      IN  	MX       	1      smtp.example.com
-```
-
-Do not forget to configure the `spf` record either.
 
 ## Add your first user
 
