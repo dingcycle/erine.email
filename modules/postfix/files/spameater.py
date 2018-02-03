@@ -20,6 +20,7 @@
 import MySQLdb
 
 import configparser
+import email.utils
 import logging
 import os
 import random
@@ -103,33 +104,18 @@ def execQuery(query, *params):
 # Extract email address from a complete address
 # Bounce email on invalid fullAddress
 def getAddress(fullAddress):
-  r = re.match(".*<(" + emailAddressRegex + ")>$", fullAddress)
-  if r:
-    return r.group(1)
-  r = re.match("(" + emailAddressRegex + ")", fullAddress)
-  if r:
-    return r.group(1)
-  raise BounceException('Invalid email address: "{}"'.format(fullAddress))
+  emailAddress = email.utils.parseaddr(fullAddress)
+  if not emailAddress[1]:
+    raise BounceException('Invalid email address: "{}"'.format(fullAddress))
+  return emailAddress[1]
 
 # Extract email label from a complete address
 # Bounce email on invalid fullAddress
 def getLabel(fullAddress):
-  r = re.match("\"(.+)\"[\s]*<" + emailAddressRegex + ">$", fullAddress)
-  if r:
-    return r.group(1)
-  r = re.match("'(.+)'[\s]*<" + emailAddressRegex + ">$", fullAddress)
-  if r:
-    return r.group(1)
-  r = re.match("(.*\S)[\s]*<" + emailAddressRegex + ">$", fullAddress)
-  if r:
-    return r.group(1)
-  r = re.match("<" + emailAddressRegex + ">$", fullAddress)
-  if r:
-    return ""
-  r = re.match(emailAddressRegex + "$", fullAddress)
-  if r:
-    return ""
-  raise DeferException('Invalid email address: "{}"'.format(fullAddress))
+  emailAddress = email.utils.parseaddr(fullAddress)
+  if not emailAddress[1]:
+    raise BounceException('Invalid email address: "{}"'.format(fullAddress))
+  return emailAddress[0]
 
 
 # erine.email user is answering to a foreign address (ee2f as Erine.Email To Foreign)
