@@ -40,3 +40,10 @@ mynetworks = 127.0.0.0/8 [::ffff:127.0.0.0]/104 [::1]/128
 mailbox_size_limit = 0
 recipient_delimiter = +
 inet_interfaces = all
+
+# Spameater needs the Message-ID to prevent loops, so we ask cleanup to add it
+# if absent (it is not spameater's purpose to do that). By default, this
+# parameter is set to no, as it can break DKIM signatures. But, as DKIM
+# signatures should consider From and To headers, and as we have to change them,
+# the original DKIM signature will be broken, Message-ID or not.
+always_add_missing_headers = yes
