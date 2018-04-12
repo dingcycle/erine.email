@@ -203,7 +203,7 @@ def loopmsg(messageId, disposableMailAddress, subject, finalRecipient, originalF
   execQuery("INSERT INTO `message` (`messageId`, `disposableMailAddress`, `subject`, `from`, `rcptTo`, `status`) VALUES (%s, %s, %s, %s, %s, %s)", messageId, disposableMailAddress, subject, originalFromAddress, finalRecipient, 'looped')
 
 def sendmsg(messageId, disposableMailAddress, subject, finalRecipient, finalMail, finalMailFrom, mailType, originalFromAddress):
-  logging.info("[{}] Sending Message-ID {} ".format(mailType,  messageId))
+  logging.info("[{}] Sending Message-ID {}".format(mailType,  messageId))
 
   if mailType in [REPLY, FIRST_SHOT]:
     sendingType = 'sentAs'
@@ -455,14 +455,13 @@ def main():
     dbCursor.close()
     raise BounceException("Bouncing email")
 
-
   if mailType == REPLY:
     execQuery("UPDATE `disposableMailAddress` SET `sentAs` = `sentAs` + 1 WHERE `mailAddress` = %s", getAddress(finalMailFrom))
     sendmsg(messageId, getAddress(finalMailFrom), subject, finalRecipient, finalMail, getAddress(finalMailFrom), mailType, originalFromAddress)
-  else:
+  elif mailType in [CLASSIC, RESERVED]:
     # Create or update disposable mail address in DB. Call sendmsg() or dropmsg().
     # mailAddress column has a UNIQUE constraint. So using fetchone() is enough.
-    execQuery("SELECT `enabled`, `mailAddress` FROM `disposableMailAddress` WHERE `mailAddress` = %s", recipient)
+    execQuery("SELECT `enabled` FROM `disposableMailAddress` WHERE `mailAddress` = %s", recipient)
     disposableMailAddress = dbCursor.fetchone()
     if not disposableMailAddress:
       logging.debug('The disposable address is used for the first time')
@@ -484,12 +483,26 @@ def main():
         saveReplyAddress(getAddress(finalMailFrom), recipient, originalFromAddress)
         if finalMailReplyTo:
           saveReplyAddress(getAddress(finalMailReplyTo), recipient, originalReplyToAddress)
-        sendmsg(messageId, disposableMailAddress[1], subject, finalRecipient, finalMail, getAddress(finalMailFrom), mailType, originalFromAddress)
+        sendmsg(messageId, recipient, subject, finalRecipient, finalMail, getAddress(finalMailFrom), mailType, originalFromAddress)
 
       else:
         # The disposable mail address is disabled
         execQuery("UPDATE `disposableMailAddress` SET `dropped` = `dropped` + 1 WHERE `mailAddress` = %s", recipient)
-        dropmsg(messageId, disposableMailAddress[1], subject, finalRecipient, originalFromAddress)
+        dropmsg(messageId, recipient, subject, finalRecipient, originalFromAddress)
+  elif mailType == FIRST_SHOT:
+    execQuery("SELECT `mailAddress` FROM `disposableMailAddress` WHERE `mailAddress` = %s", finalSender)
+    disposableMailAddress = dbCursor.fetchone()
+    if not disposableMailAddress:
+      logging.debug('The disposable address is used for the first time')
+
+      # The disposable mail address is used for the first time
+      execQuery("INSERT INTO `disposableMailAddress` (`mailAddress`, `userID`, `sentAs`) VALUES (%s, %s, %s)", finalSender, str(userID), 1);
+      sendmsg(messageId, finalSender, subject, finalRecipient, finalMail, getAddress(finalMailFrom), mailType, originalFromAddress)
+
+    else:
+      # The disposable address has already been created
+      execQuery("UPDATE `disposableMailAddress` SET `sentAs` = `sentAs` + 1 WHERE `mailAddress` = %s", finalSender)
+      sendmsg(messageId, finalSender, subject, finalRecipient, finalMail, getAddress(finalMailFrom), mailType, originalFromAddress)
 
   # Terminate transaction and close connection to the database
   execQuery("COMMIT;")
