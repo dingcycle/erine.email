@@ -180,10 +180,11 @@ def f2ee_getReplyAddress(fromAddress, toAddress):
     replyAddress += r.group(1)
 
   # Add the label and return the result
-  replyAddress = getAddress(fromAddress) + " <" + replyAddress + ">"
   label = getLabel(fromAddress)
   if label:
-    replyAddress = label + " - " + replyAddress
+    replyAddress = '"{0} - {1}" <{2}>'.format(label, getAddress(fromAddress), replyAddress)
+  else:
+    replyAddress = '"{0}" <{1}>'.format(getAddress(fromAddress), replyAddress)
   return replyAddress
 
 # Forge or retrieve reply email address
