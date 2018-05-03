@@ -146,14 +146,10 @@ def ee2f_getReplyAddress(fromAddress, toAddress):
       logging.critical("Can not check if " + getAddress(fromAddress) + " is allowed to send an email as " + replyAddress[0] + ". Assuming yes.")
     else:
       if allowedEmail[0] != getAddress(fromAddress):
-        raise BounceException('"{}" is not allowed to send an email as "{}"').format(
+        raise BounceException('"{}" is not allowed to send an email as "{}"'.format(
           getAddress(fromAddress), replyAddress[0]
-        )
-    label = getLabel(fromAddress)
-    if label:
-      return label + " <" + replyAddress[0] + ">"
-    else:
-      return replyAddress[0]
+        ))
+    return email.utils.formataddr((getLabel(fromAddress), replyAddress[0]))
   else:
     raise BounceException('Invalid email address: "{}"'.format(toAddress))
 
@@ -182,9 +178,13 @@ def f2ee_getReplyAddress(fromAddress, toAddress):
   # Add the label and return the result
   label = getLabel(fromAddress)
   if label:
-    replyAddress = '"{0} - {1}" <{2}>'.format(label, getAddress(fromAddress), replyAddress)
+    replyAddress = email.utils.formataddr(
+      ('{0} - {1}'.format(label, getAddress(fromAddress)), replyAddress)
+    )
   else:
-    replyAddress = '"{0}" <{1}>'.format(getAddress(fromAddress), replyAddress)
+    replyAddress = email.utils.formataddr(
+      (getAddress(fromAddress), replyAddress)
+    )
   return replyAddress
 
 # Forge or retrieve reply email address
@@ -377,76 +377,27 @@ def main():
     userID = finalRecipient[1]
     finalRecipient = finalRecipient[0]
 
-  # Forge finalMail, messageId and subject
-  messageId = ""
-  subject = ""
-
   # Parse email headers
   # That's also where the rewriting happens
-
   finalMail = ""
   originalFromAddress = False
   finalMailFrom = False
   originalReplyToAddress = False
   finalMailReplyTo = False
 
-  for line in originalMail:
-    # FIXME should we really parse the whole body as well?
-    r = re.match("From:\s(.+)$", line, re.IGNORECASE)
-    if r:
-      if not re.match(".*<" + sender + ">$", r.group(1), re.IGNORECASE) and sender.lower() != r.group(1).lower():
-        logging.warning("From (" + r.group(1) + ") is different than sender (" + sender + ")")
+  originalMailString = "".join(originalMail)
+  msg = email.message_from_string(originalMailString)
 
-      originalFromAddress = getAddress(r.group(1))
-      if finalSender:
-        finalMailFrom = finalSender
-      else:
-        finalMailFrom = getReplyAddress(r.group(1), recipient, mailType)
-      finalMail += "From: " + finalMailFrom + "\n"
-      continue
-    r = re.match("Reply-to:\s(.+)$", line, re.IGNORECASE)
-    if r:
-      originalReplyToAddress = getAddress(r.group(1))
-      finalMailReplyTo = getReplyAddress(r.group(1), recipient, mailType)
-      finalMail += "Reply-to: " + finalMailReplyTo + "\n"
-      continue
-    r = re.match("(\s+for\s+)(.+);(.+)$", line, re.IGNORECASE)
-    if r:
-      if r.group(2).lower() != "<" + recipient + ">":
-        logging.warning(line + ": for (" + r.group(2) + ") is different than recipient (" + recipient + ")")
-      finalMail += r.group(1) + "<" + finalRecipient + ">" + r.group(3) + "\n"
-      continue
-    r = re.match("To:\s(.+)$", line, re.IGNORECASE)
-    if r:
-      if mailType == REPLY:
-        finalMail += "To: "
-        label = ee2f_getLabel(r.group(1))
-        if label:
-          finalMail += label + " "
-        finalMail += "<" + finalRecipient + ">\n"
-        continue
-      elif mailType == FIRST_SHOT:
-        ## rewrite the recipient
-        finalMail += "To: "
-        finalMail += "<" + finalRecipient + ">\n"
-        continue
-    r = re.match("Message-ID:\s(.+)$", line, re.IGNORECASE)
-    if r:
-      messageId = r.group(1)
-    r = re.match("Subject:\s(.+)$", line, re.IGNORECASE)
-    if r:
-      subject = r.group(1)
-    finalMail += line
-  if not originalFromAddress:
-    logging.warning("Cannot retrieve From information. Using sender (" + sender + ")")
-    originalFromAddress = sender
-  if not finalMailFrom:
-    logging.warning("Cannot retrieve From information. Using sender (" + sender + ")")
-    finalMailFrom = getReplyAddress(sender, recipient, mailType)
+  toHeader = email.utils.parseaddr(msg['to'])
+  fromHeader = email.utils.parseaddr(msg['From'])
+  originalFromAddress = fromHeader[1]
+  replyToHeader = email.utils.parseaddr(msg['reply-to'])
+  subject = msg['Subject']
+  messageId = msg['message-id']
+
+  # post-parsing actions if some headers were not found
   if not messageId:
     raise BounceException("Message-ID not found")
-  if not subject:
-    logging.warning("Subject not found")
 
   # Exit if message already processed
   execQuery("SELECT `id` FROM `message` WHERE `messageId` = %s", messageId)
@@ -454,6 +405,54 @@ def main():
     loopmsg(messageId, finalMailFrom, subject, finalRecipient, originalFromAddress)
     dbCursor.close()
     raise BounceException("Bouncing email")
+
+  if not subject:
+    logging.warning("Subject not found")
+
+  if not originalFromAddress:
+    logging.warning("Cannot retrieve From information. Using sender ({})".format(sender))
+    originalFromAddress = sender
+    finalMailFrom = getReplyAddress(sender, recipient, mailType)
+  elif finalSender:
+    # if a sender was passed (first-shot), we don't have to compute any "from"
+    finalMailFrom = finalSender
+  else:
+    finalMailFrom = getReplyAddress(email.utils.formataddr(fromHeader), recipient, mailType)
+
+  # deal with Reply-to:
+  if replyToHeader[1]:
+    originalReplyToAddress = replyToHeader[1]
+    finalMailReplyTo = getReplyAddress(replyToHeader[1], recipient, mailType)
+
+  # deal with To:
+  if mailType == REPLY:
+    label = ee2f_getLabel(email.utils.formataddr(toHeader))
+    finalMailTo = email.utils.formataddr((label, finalRecipient))
+  elif mailType == FIRST_SHOT:
+    ## rewrite the recipient
+    finalMailTo = email.utils.formataddr((None, finalRecipient))
+
+  # trash original headers, and append them (unchanged or in their modified version)
+  # (the reason for not editing headers in-place in the original message, is that
+  # we cannot access a specific "received:" header to modify it, it would always be the first).
+  # cf. https://docs.python.org/2/library/email.message.html#email.message.Message.replace_header
+  headers = msg.items()
+  msg._headers = []
+
+  for (k, v) in headers:
+    _name = k.lower()
+    if _name == 'received':
+      v = v.replace(toHeader[1], finalRecipient)
+    elif _name == 'to' and mailType in [REPLY, FIRST_SHOT]:
+      v = finalMailTo
+    elif _name == 'from':
+      v = finalMailFrom
+    elif _name == 'reply-to' and replyToHeader[1]:
+      v = finalMailReplyTo
+
+    msg.add_header(k, v)
+
+  finalMail = msg.as_string()
 
   if mailType == REPLY:
     execQuery("UPDATE `disposableMailAddress` SET `sentAs` = `sentAs` + 1 WHERE `mailAddress` = %s", getAddress(finalMailFrom))
