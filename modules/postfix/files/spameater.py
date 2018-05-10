@@ -99,7 +99,7 @@ def execQuery(query, *params):
   try:
     dbCursor.execute(query, params)
   except Exception as e:
-    raise DeferException("While executing the following query: {}\nWith the following parameters: {}\nThe following exception raised: {}".format(query, ', '.join(params), str(e)))
+    raise DeferException("While executing the following query: {}\nWith the following parameters: {}\nThe following exception raised: {}".format(query, ', '.join(map(str, params)), str(e))
 
 # Extract email address from a complete address
 # Bounce email on invalid fullAddress
